@@ -22,4 +22,9 @@ export type {
   ProcessedEvent,
   IdempotencyRecord,
   IdempotencyStatus,
+  Session,
+  SessionRevokeReason,
+  RefreshToken,
+  VerificationToken,
+  VerificationPurpose,
 } from '@prisma/client';

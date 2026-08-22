@@ -43,7 +43,95 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
+  sessions           Session[]
+  verificationTokens VerificationToken[]
+
   @@index([role])
+}
+
+enum SessionRevokeReason {
+  LOGOUT
+  LOGOUT_ALL
+  /// A refresh token was presented twice. Either the chain leaked or someone is
+  /// replaying it; both mean this session can no longer be trusted.
+  REUSE_DETECTED
+  PASSWORD_CHANGED
+  ADMIN
+}
+
+/// One signed-in device. A user has many; revoking one leaves the others alone, which is
+/// what makes "sign out my old laptop" possible without logging out the phone.
+model Session {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  /// Best-effort device identification for the "your sessions" screen. Never used for
+  /// authorization — a user agent is a client-supplied string and trivially forged.
+  userAgent String?
+  ip        String?
+
+  createdAt     DateTime             @default(now())
+  lastUsedAt    DateTime             @default(now())
+  revokedAt     DateTime?
+  revokedReason SessionRevokeReason?
+
+  refreshTokens RefreshToken[]
+
+  @@index([userId, revokedAt])
+}
+
+/// One link in a session's refresh chain.
+///
+/// Rotation means every refresh mints a new token and marks the old one used. The chain is
+/// kept rather than deleted, because a *used* token being presented again is precisely the
+/// signal that something leaked — and you cannot detect the reuse of a row you deleted.
+model RefreshToken {
+  id String @id @default(cuid())
+
+  sessionId String
+  session   Session @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  /// SHA-256 of the token, never the token itself. A database leak must not hand out
+  /// live sessions. SHA-256 rather than argon2 on purpose: this is a 256-bit random
+  /// value, so there is nothing to brute-force and a slow hash would only add latency
+  /// to every refresh. Argon2 is for low-entropy secrets, which passwords are and this
+  /// is not.
+  tokenHash String @unique
+
+  expiresAt DateTime
+  createdAt DateTime  @default(now())
+  /// Set when this token is exchanged. Non-null + presented again = reuse.
+  usedAt    DateTime?
+
+  @@index([sessionId])
+  @@index([expiresAt])
+}
+
+enum VerificationPurpose {
+  EMAIL_VERIFICATION
+  PASSWORD_RESET
+}
+
+/// Single-use, expiring token delivered by email.
+///
+/// Stored hashed for the same reason as refresh tokens: whoever reads this table must not
+/// be able to take over an account with what they find.
+model VerificationToken {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  purpose   VerificationPurpose
+  tokenHash String              @unique
+  expiresAt DateTime
+  usedAt    DateTime?
+  createdAt DateTime            @default(now())
+
+  @@index([userId, purpose])
+  @@index([expiresAt])
 }
 
 // ─── platform kernel ─────────────────────────────────────────────────────────

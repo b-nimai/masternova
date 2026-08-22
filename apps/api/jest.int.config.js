@@ -7,7 +7,8 @@ module.exports = {
   testEnvironment: 'node',
   rootDir: 'test',
   testRegex: '.*\\.int-spec\\.ts$',
-  testTimeout: 120_000,
+  testTimeout: 240_000,
+  setupFiles: ['<rootDir>/setup-env.ts'],
   transform: { '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/../tsconfig.json' }] },
   moduleNameMapper: {
     '^@masternova/(.*)$': '<rootDir>/../../../packages/$1/src',

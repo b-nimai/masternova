@@ -2,32 +2,27 @@ import 'reflect-metadata';
 import { NestFactory } from '@nestjs/core';
 import { ConfigType } from '@nestjs/config';
 import { FastifyAdapter, NestFastifyApplication } from '@nestjs/platform-fastify';
-import fastifySecureSession from '@fastify/secure-session';
+import fastifyCookie from '@fastify/cookie';
 import { AppModule } from './app.module';
-import { appConfig, sessionConfig } from './config/configuration';
+import { appConfig } from './config/configuration';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
 
-  const session = app.get<ConfigType<typeof sessionConfig>>(sessionConfig.KEY);
-  const { port, isProduction } = app.get<ConfigType<typeof appConfig>>(appConfig.KEY);
+  const { port, cookieSecret } = app.get<ConfigType<typeof appConfig>>(appConfig.KEY);
 
-  // First-party, encrypted session cookie (libsodium). Passport strategies validate
-  // credentials; we persist `userId` here ourselves. In prod the Ingress serves api +
-  // web on one origin, so SameSite=Lax is enough (PROJECT_PLAN.md §2). The key is
-  // derived from SESSION_SECRET (>=32 chars) + a fixed 16-char SESSION_SALT.
-  await app.register(fastifySecureSession, {
-    cookieName: 'masternova_session',
-    secret: session.secret,
-    salt: session.salt,
-    cookie: {
-      path: '/',
-      httpOnly: true,
-      sameSite: 'lax',
-      secure: isProduction,
-      maxAge: 60 * 60 * 24 * 7, // 7 days
-    },
-  });
+  /**
+   * Plain signed cookies, not an encrypted session blob.
+   *
+   * The previous design stored `userId` in a libsodium-encrypted cookie, which is
+   * server-stateless and therefore cannot be revoked: signing out on one device leaves
+   * every other cookie valid until it expires. Identity now issues a short-lived access
+   * token plus a rotating refresh token backed by a `Session` row, so revocation is real
+   * and reuse is detectable (ADR-0010). Nothing secret lives in a cookie value, so
+   * signing is enough — the access token is itself signed, and the refresh token is an
+   * opaque lookup key into a table we control.
+   */
+  await app.register(fastifyCookie, { secret: cookieSecret });
 
   // Every route is served under /api (PROJECT_PLAN.md §2 global prefix).
   app.setGlobalPrefix('api');

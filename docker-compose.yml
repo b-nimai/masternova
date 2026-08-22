@@ -83,8 +83,8 @@ services:
       API_PORT: 3001
       DATABASE_URL: postgresql://masternova:masternova@postgres:5432/masternova?schema=public
       REDIS_URL: redis://redis:6379
-      SESSION_SECRET: dev-secret-change-me-please-32-chars-min
-      SESSION_SALT: masternova-dev16 # exactly 16 chars (libsodium requirement)
+      COOKIE_SECRET: dev-cookie-secret-change-me-32-chars-min
+      JWT_ACCESS_SECRET: dev-jwt-secret-change-me-at-least-32-chars
       S3_ENDPOINT: http://minio:9000 # server-side ops over the docker network
       S3_PUBLIC_ENDPOINT: http://localhost:9000 # signed into browser part-upload URLs
       S3_REGION: us-east-1

@@ -37,3 +37,28 @@ export const publicUserSchema = z.object({
   createdAt: z.string(),
 });
 export type PublicUser = z.infer<typeof publicUserSchema>;
+
+export const verifyEmailSchema = z.object({
+  token: z.string().min(1),
+});
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+
+export const requestPasswordResetSchema = z.object({
+  email: z.string().email(),
+});
+export type RequestPasswordResetInput = z.infer<typeof requestPasswordResetSchema>;
+
+export const resetPasswordSchema = z.object({
+  token: z.string().min(1),
+  password: z.string().min(8, 'Password must be at least 8 characters'),
+});
+export type ResetPasswordInput = z.infer<typeof resetPasswordSchema>;
+
+export const sessionSchema = z.object({
+  id: z.string(),
+  userAgent: z.string().nullable(),
+  ip: z.string().nullable(),
+  createdAt: z.string(),
+  lastUsedAt: z.string(),
+});
+export type SessionSummary = z.infer<typeof sessionSchema>;

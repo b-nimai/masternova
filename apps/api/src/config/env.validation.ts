@@ -6,14 +6,21 @@ const envSchema = z.object({
   DATABASE_URL: z.string().url(),
   REDIS_URL: z.string().url().default('redis://localhost:6379'),
 
-  // Session cookie (see main.ts): the key is derived from SESSION_SECRET (>=32 chars)
-  // and a fixed 16-char SESSION_SALT.
-  SESSION_SECRET: z.string().min(32),
-  SESSION_SALT: z.string().length(16),
+  /// Signs cookies so tampering is detectable. Not encryption — nothing secret is
+  /// stored in a cookie value; the access token is itself signed and the refresh token
+  /// is an opaque lookup key.
+  COOKIE_SECRET: z.string().min(32),
 
   // S3 / MinIO storage. S3_PUBLIC_ENDPOINT is the browser-reachable host for presigned
   // URLs; falls back to S3_ENDPOINT in the config layer when unset.
   S3_BUCKET: z.string().default('masternova-media'),
+
+  // --- identity ---
+  JWT_ACCESS_SECRET: z.string().min(32),
+  ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
+  REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
+  EMAIL_VERIFICATION_TTL_HOURS: z.coerce.number().int().positive().default(24),
+  PASSWORD_RESET_TTL_MINUTES: z.coerce.number().int().positive().default(30),
   S3_REGION: z.string().default('us-east-1'),
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),
