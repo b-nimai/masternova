@@ -31,6 +31,9 @@ jobs:
       # packages/* are tsup-built and consumed by the apps, so they must exist
       # before typecheck resolves @masternova/shared and @masternova/contracts.
       - run: pnpm --filter "./packages/**" build
+      # @masternova/db re-exports generated Prisma types; typecheck cannot resolve them
+      # until the client is generated. `pnpm install` does not do this on its own.
+      - run: pnpm db:generate
       - run: pnpm format:check
       - run: pnpm lint
       - run: pnpm typecheck

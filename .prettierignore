@@ -1,0 +1,11 @@
+# Generated — the tool that writes these owns their formatting, and reformatting a
+# lockfile just means the next `pnpm install` fails format:check again.
+pnpm-lock.yaml
+**/dist/
+**/.next/
+**/coverage/
+
+# Prisma owns these: the schema has its own formatter (`prisma format`) and the
+# migration SQL is generated and must stay byte-identical to what was applied.
+packages/db/prisma/migrations/
+packages/db/prisma/schema.prisma

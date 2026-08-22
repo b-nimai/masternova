@@ -8,6 +8,7 @@ module.exports = {
   testEnvironment: 'node',
   rootDir: 'src',
   testRegex: '.*\\.spec\\.ts$',
+  passWithNoTests: true,
   transform: { '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/../tsconfig.json' }] },
   collectCoverageFrom: ['**/*.ts', '!**/*.module.ts', '!main.ts'],
   moduleNameMapper: { '^@masternova/(.*)$': '<rootDir>/../../../packages/$1/src' },
