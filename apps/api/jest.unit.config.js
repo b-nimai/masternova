@@ -11,5 +11,11 @@ module.exports = {
   passWithNoTests: true,
   transform: { '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/../tsconfig.json' }] },
   collectCoverageFrom: ['**/*.ts', '!**/*.module.ts', '!main.ts'],
-  moduleNameMapper: { '^@masternova/(.*)$': '<rootDir>/../../../packages/$1/src' },
+  moduleNameMapper: {
+    '^@masternova/(.*)$': '<rootDir>/../../../packages/$1/src',
+    // packages/* are ESM source and so carry explicit .js extensions on relative
+    // imports. Jest resolves them as CommonJS, where those files are .ts — strip the
+    // extension rather than dual-building the packages just to run a unit test.
+    '^(\\.{1,2}/.*)\\.js$': '$1',
+  },
 };

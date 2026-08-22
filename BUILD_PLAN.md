@@ -3,7 +3,7 @@
 > The file you open at the start of every session to decide what to do next.
 > Plan: [`PROJECT_PLAN.md`](./PROJECT_PLAN.md) · Pitch: [`PITCH.md`](./PITCH.md) · Rules: [`CLAUDE.md`](./CLAUDE.md)
 
-**Created:** 2026-08-22 · **Last updated:** 2026-08-22 · **Status:** Phase 0 complete and verified — next up: task 1.1 (platform kernel)
+**Created:** 2026-08-22 · **Last updated:** 2026-08-22 · **Status:** Phase 1A in progress — 1.1 platform kernel done; next up 1.2 (identity)
 
 ---
 
@@ -110,13 +110,13 @@ class is the correct design, and YAGNI beats speculative generality.
 | Phase                                                       | Tasks  | Done   | Est       | Spent | Status |
 | ----------------------------------------------------------- | ------ | ------ | --------- | ----- | ------ |
 | [0 — Foundation](#5-phase-0--foundation)                    | 12     | 12     | 18 h      | ~9 h  | ✅     |
-| [1A — Backend: core spine](#6-phase-1a--backend-core-spine) | 11     | 0      | 180 h     | —     | ☐      |
+| [1A — Backend: core spine](#6-phase-1a--backend-core-spine) | 11     | 1      | 180 h     | ~5 h  | 🔨     |
 | [2 — DevOps & hosting](#8-phase-2--devops--hosting)         | 11     | 0      | 59 h      | —     | ☐      |
 | [3 — Frontend](#9-phase-3--frontend)                        | 16     | 0      | 84 h      | —     | ☐      |
 | [4 — Integration](#10-phase-4--integration)                 | 5      | 0      | 18 h      | —     | ☐      |
 | [1B — Backend: depth](#7-phase-1b--backend-depth)           | 6      | 0      | 96 h      | —     | ☐      |
 | [5 — Refinement & proof](#11-phase-5--refinement--proof)    | 8      | 0      | 42 h      | —     | ☐      |
-| **Total**                                                   | **69** | **12** | **497 h** | ~9 h  |        |
+| **Total**                                                   | **69** | **13** | **497 h** | ~14 h |        |
 
 ### ✅ Environment verified (2026-08-22)
 
@@ -165,6 +165,7 @@ Recorded because the tracker is only useful if it says what actually happened.
 | **Replaced `use-video-upload.ts` with `lib/multipart-upload.ts`** | The hook coupled the transport to React and to Loom's `/videos` endpoints. The valuable part — bounded concurrency, per-part retries, ETag handling — is now domain-free and testable without a DOM.                                                                                                                                                                                                                                                                                                    |
 | **Node 24, not 22**                                               | The Dockerfiles already said `node:24-slim`; the CI pin was the outlier. 24 is the current active LTS.                                                                                                                                                                                                                                                                                                                                                                                                  |
 | **`apps/web` is foundation-only**                                 | shadcn primitives, auth form, lib helpers. Pages and the domain client are Phase 3.                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **`BaseJobProcessor` deferred from 1.1 to 1.7**                   | The task listed it, but a Template Method with zero subclasses is exactly the speculative generality §3 forbids — "one implementation is not a seam". BullMQ is not even installed yet. It gets built in 1.7 where three real processors exist to shape the hooks.                                                                                                                                                                                                                                      |
 | **Reinstated the AI layer** (2026-08-22, after Phase 0)           | The original cut argued recurring API cost, assuming a paid Whisper. Self-hosted removes the cost _and_ strengthens the worker-fleet story — two CPU-bound job types on one autoscaled pool. The cut also claimed transcode already proved the async signal, which was too narrow: timestamp-aligned chunking, hybrid retrieval, SSE streaming with backpressure, server-side token budgets and prompt-injection defence appear nowhere else in the plan. Now tasks 1.16–1.17 (Phase 1B) and 3.15–3.16. |
 
 ---

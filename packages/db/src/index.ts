@@ -14,4 +14,12 @@
  */
 
 export { PrismaClient, Prisma } from '@prisma/client';
-export type { User, Role } from '@prisma/client';
+export type {
+  User,
+  Role,
+  OutboxMessage,
+  OutboxStatus,
+  ProcessedEvent,
+  IdempotencyRecord,
+  IdempotencyStatus,
+} from '@prisma/client';

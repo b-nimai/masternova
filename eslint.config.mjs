@@ -41,16 +41,28 @@ export default tseslint.config(
   /* A domain exception or an HttpException carries a status code and lands in the
    * AllExceptionsFilter envelope; a bare Error does not (CLAUDE.md §4).
    *
-   * Scoped to REQUEST-PATH code only. Boot-time code (src/config/** validating env,
-   * src/main.ts) has no request to answer and no filter mounted yet, so a bare Error
-   * is the correct thing to throw there — and apps/web has no request path at all.
-   * The first version of this rule fired on all three, which is how the scope got
-   * pinned down: a lint rule that cries wolf gets disabled, which is worse than not
-   * having it.
+   * Scoped to the API's request path only, and the scope has been narrowed twice by
+   * the rule firing where it did not belong:
+   *
+   *   - Boot-time code (src/config/** validating env, src/main.ts) has no request to
+   *     answer and no filter mounted yet.
+   *   - apps/web has no request path at all.
+   *   - apps/worker is a poll loop and a queue consumer. Nothing there returns an HTTP
+   *     response, so there is no envelope to shape and a plain Error is correct.
+   *   - Tests throw to simulate failure; that is the point of the test.
+   *
+   * A lint rule that cries wolf gets disabled, which is worse than not having it. It
+   * has also earned its keep: it caught the Google OAuth callback passing a bare Error
+   * to Passport, which is a real request path.
    */
   {
-    files: ['apps/api/src/**/*.ts', 'apps/worker/src/**/*.ts'],
-    ignores: ['apps/*/src/config/**', 'apps/*/src/main.ts'],
+    files: ['apps/api/src/**/*.ts'],
+    ignores: [
+      'apps/api/src/config/**',
+      'apps/api/src/main.ts',
+      '**/*.spec.ts',
+      '**/*.int-spec.ts',
+    ],
     rules: {
       'no-restricted-syntax': [
         'error',

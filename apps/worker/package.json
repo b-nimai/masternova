@@ -9,8 +9,9 @@
     "start:prod": "node dist/main.js",
     "typecheck": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "pnpm test:unit",
-    "test:unit": "jest --config jest.unit.config.js"
+    "test": "pnpm test:unit && pnpm test:int",
+    "test:unit": "jest --config jest.unit.config.js",
+    "test:int": "jest --config jest.int.config.js --runInBand"
   },
   "dependencies": {
     "@masternova/contracts": "workspace:*",
@@ -27,9 +28,11 @@
     "@nestjs/cli": "^11.0.2",
     "@nestjs/schematics": "^11.0.0",
     "@nestjs/testing": "^11.0.6",
+    "@testcontainers/postgresql": "^10.16.0",
     "@types/jest": "^29.5.14",
     "@types/node": "^22.10.7",
     "jest": "^29.7.0",
+    "testcontainers": "^10.16.0",
     "ts-jest": "^29.2.5",
     "typescript": "^5.7.3"
   }

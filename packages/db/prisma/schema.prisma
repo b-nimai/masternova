@@ -45,3 +45,89 @@ model User {
 
   @@index([role])
 }
+
+// ─── platform kernel ─────────────────────────────────────────────────────────
+// Owned by the outbox module (write side, apps/api) and the outbox-relay module
+// (read side, apps/worker). No domain lives here — this is the mechanism every
+// bounded context uses to make a state change and its effects atomic.
+
+enum OutboxStatus {
+  PENDING
+  PUBLISHING
+  PUBLISHED
+  DEAD
+}
+
+/// A domain event, written in the SAME transaction as the state change that caused it.
+/// That is the whole point: without the shared transaction you either lose effects (commit
+/// state, crash before publishing) or invent them (publish, then roll back the state).
+model OutboxMessage {
+  id String @id @default(cuid())
+
+  /// Stable across relay retries, so a consumer can dedupe on it. This is what turns
+  /// at-least-once delivery into exactly-once *effects*.
+  eventId       String       @unique
+  type          String
+  aggregateType String
+  aggregateId   String
+  payload       Json
+  status        OutboxStatus @default(PENDING)
+
+  /// Retry bookkeeping. `availableAt` is moved forward on failure for exponential
+  /// backoff, so a poisonous message cannot spin the relay.
+  attempts    Int       @default(0)
+  availableAt DateTime  @default(now())
+  publishedAt DateTime?
+  lastError   String?
+
+  /// W3C traceparent, captured at write time. This is what lets one trace span
+  /// `POST /checkout -> outbox relay -> email sent` across the queue boundary.
+  traceparent String?
+  createdAt   DateTime @default(now())
+
+  /// Serves the relay's claim query: pending work that is due, oldest first.
+  @@index([status, availableAt, createdAt])
+  @@index([aggregateType, aggregateId])
+}
+
+/// Consumer-side dedupe. The relay guarantees at-least-once; this table is how a
+/// handler makes its own effect happen exactly once. Keyed by (event, handler) so
+/// each handler decides independently — a retry that already emailed must not email
+/// again, but a handler added later must still see the event.
+model ProcessedEvent {
+  eventId     String
+  handler     String
+  processedAt DateTime @default(now())
+
+  @@id([eventId, handler])
+  @@index([processedAt])
+}
+
+enum IdempotencyStatus {
+  IN_FLIGHT
+  COMPLETED
+}
+
+/// Replay protection for unsafe endpoints. The client sends `Idempotency-Key`; a repeat
+/// with the same key returns the stored response instead of acting twice.
+model IdempotencyRecord {
+  id String @id @default(cuid())
+
+  /// Scoped per caller, never global. A globally-keyed table would let one user probe
+  /// another user's stored response by guessing a key.
+  scope String
+  key   String
+
+  endpoint    String
+  /// A repeat of the same key with a DIFFERENT body is a client bug, not a retry,
+  /// and is rejected rather than silently served the first response.
+  requestHash String
+  status      IdempotencyStatus @default(IN_FLIGHT)
+  statusCode  Int?
+  response    Json?
+  createdAt   DateTime          @default(now())
+  expiresAt   DateTime
+
+  @@unique([scope, key])
+  @@index([expiresAt])
+}

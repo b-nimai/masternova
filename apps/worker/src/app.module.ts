@@ -3,13 +3,15 @@ import { ConfigModule } from '@nestjs/config';
 import { validateEnv } from './config/env.validation';
 import { databaseConfig, redisConfig } from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
+import { OutboxRelayModule } from './modules/outbox-relay/outbox-relay.module';
 
 /**
- * Standalone DI context — no HTTP server. It owns the BullMQ consumers.
+ * Standalone DI context — no HTTP server.
  *
- * Phase 0 boots the context with config, env validation and Prisma only. The queue
- * registration and the job processors arrive with the pipeline in task 1.7, scaffolded
- * via `nest g` so the module graph is wired by the CLI rather than by hand.
+ * It runs the outbox relay (task 1.1) and, from task 1.7, the BullMQ job processors.
+ * Both belong here rather than in the API because they are long-running loops with a
+ * different resource profile from a request, and because this is the deployable that
+ * autoscales on queue depth.
  */
 @Module({
   imports: [
@@ -19,6 +21,7 @@ import { PrismaModule } from './prisma/prisma.module';
       load: [redisConfig, databaseConfig],
     }),
     PrismaModule,
+    OutboxRelayModule,
   ],
 })
 export class AppModule {}
