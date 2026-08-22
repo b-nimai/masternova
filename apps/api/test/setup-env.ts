@@ -18,3 +18,4 @@ process.env.S3_ENDPOINT ??= 'http://localhost:9000';
 process.env.S3_ACCESS_KEY ??= 'minioadmin';
 process.env.S3_SECRET_KEY ??= 'minioadmin';
 process.env.GOOGLE_CALLBACK_URL ??= 'http://localhost:3000/api/auth/google/callback';
+process.env.UNSUBSCRIBE_SECRET = 'test-unsubscribe-secret-at-least-32-chars';

@@ -71,3 +71,23 @@ export const identityConfig = registerAs('identity', () => ({
 }));
 
 export type IdentityConfig = ReturnType<typeof identityConfig>;
+
+/**
+ * Notification config (task 1.3), API half.
+ *
+ * The API never sends email — the worker does. What it needs is the key that verifies an
+ * unsubscribe link the worker minted, and the secret that proves a bounce webhook really
+ * came from the provider.
+ */
+export const notificationConfig = registerAs('notification', () => ({
+  /** Must be byte-identical to the worker's, or every unsubscribe link fails to verify. */
+  unsubscribeSecret: process.env.UNSUBSCRIBE_SECRET as string,
+  /**
+   * Resend signs webhooks with a Svix-style HMAC. Optional because the local stack has no
+   * provider to receive webhooks from — but when it is absent the endpoint refuses every
+   * request rather than trusting the caller. Unverified is not the same as unconfigured.
+   */
+  webhookSecret: process.env.MAIL_WEBHOOK_SECRET,
+}));
+
+export type NotificationConfig = ReturnType<typeof notificationConfig>;

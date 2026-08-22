@@ -6,6 +6,7 @@ import {
   appConfig,
   googleConfig,
   identityConfig,
+  notificationConfig,
   redisConfig,
   s3Config,
 } from './config/configuration';
@@ -18,18 +19,20 @@ import { OutboxModule } from './modules/outbox/outbox.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { JwtAuthGuard } from './modules/identity/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/identity/guards/roles.guard';
+import { NotificationModule } from './modules/notification/notification.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
-      load: [appConfig, s3Config, redisConfig, googleConfig, identityConfig],
+      load: [appConfig, s3Config, redisConfig, googleConfig, identityConfig, notificationConfig],
     }),
     PrismaModule,
     HealthModule,
     OutboxModule,
     IdentityModule,
+    NotificationModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

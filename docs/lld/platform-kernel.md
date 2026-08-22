@@ -98,11 +98,21 @@ classDiagram
     DomainEventHandler <|.. SendReceiptHandler
 
     note for UnitOfWork "token: UNIT_OF_WORK\nin @masternova/contracts"
-    note for DomainEventHandler "multi-token: DOMAIN_EVENT_HANDLER\nhandlers self-register"
+    note for DomainEventHandler "marked @EventHandler()\nfound by DiscoveryService"
 ```
 
-The seam: contexts inject `UNIT_OF_WORK` and never see `PrismaUnitOfWork`. Handlers register
-against `DOMAIN_EVENT_HANDLER`, so `commerce` never imports `notification` to send a receipt.
+The seam: contexts inject `UNIT_OF_WORK` and never see `PrismaUnitOfWork`. Handlers are marked
+`@EventHandler()` and collected at bootstrap through Nest's `DiscoveryService`, so `commerce`
+never imports `notification` to send a receipt — and the dispatcher never learns which
+contexts exist.
+
+> **Changed in task 1.3.** This was a `DOMAIN_EVENT_HANDLER` multi-provider token. Two
+> problems surfaced the moment a real consumer existed: Nest's `multi` providers do not
+> merge across modules, so the second context to register handlers would have silently
+> shadowed the first, and making injection work at all required `outbox-relay` to import
+> the consuming module — the cross-context import `CLAUDE.md` §4 forbids. Discovery costs
+> fifteen lines in the dispatcher and makes adding a consumer a zero-edit change to the
+> kernel (§1 O). The token is gone; the interface in `@masternova/contracts` is unchanged.
 
 ## 5. Main flow
 

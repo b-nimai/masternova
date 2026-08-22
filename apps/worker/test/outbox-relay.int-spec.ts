@@ -31,7 +31,9 @@ describe('OutboxRelayService (real Postgres)', () => {
 
   const relayWith = (handlers: DomainEventHandler[]) => {
     const p = prisma as unknown as PrismaService;
-    return new OutboxRelayService(p, new DomainEventDispatcher(p, handlers));
+    const dispatcher = new DomainEventDispatcher(p);
+    dispatcher.register(...handlers);
+    return new OutboxRelayService(p, dispatcher);
   };
 
   const counting = (name: string, impl?: () => Promise<void>) => {

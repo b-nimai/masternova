@@ -1,9 +1,7 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import {
-  DOMAIN_EVENT_HANDLER,
-  type DomainEvent,
-  type DomainEventHandler,
-} from '@masternova/contracts';
+import { Injectable, Logger, Optional, type OnApplicationBootstrap } from '@nestjs/common';
+import { DiscoveryService, Reflector } from '@nestjs/core';
+import { type DomainEvent, type DomainEventHandler } from '@masternova/contracts';
+import { EVENT_HANDLER_METADATA } from '../../common/decorators/event-handler.decorator';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**
@@ -17,18 +15,42 @@ import { PrismaService } from '../../prisma/prisma.service';
  * Delivery is at-least-once — the relay can crash between a handler succeeding and the
  * message being marked published. `ProcessedEvent` is what converts that into
  * exactly-once *effects*: a handler that has already run for an event is skipped.
+ *
+ * Handlers are **discovered**, not injected. Anything decorated `@EventHandler()`
+ * anywhere in the application is picked up at bootstrap, which is what lets a bounded
+ * context add a consumer without editing this file or being imported by it (CLAUDE.md
+ * §1 O and §4). Discovery runs at `onApplicationBootstrap` rather than in the
+ * constructor because that is the first point at which every provider has an instance.
  */
 @Injectable()
-export class DomainEventDispatcher {
+export class DomainEventDispatcher implements OnApplicationBootstrap {
   private readonly logger = new Logger(DomainEventDispatcher.name);
   private readonly byType = new Map<string, DomainEventHandler[]>();
 
   constructor(
     private readonly prisma: PrismaService,
-    @Optional()
-    @Inject(DOMAIN_EVENT_HANDLER)
-    handlers: DomainEventHandler[] = [],
-  ) {
+    @Optional() private readonly discovery?: DiscoveryService,
+    @Optional() private readonly reflector?: Reflector,
+  ) {}
+
+  onApplicationBootstrap(): void {
+    if (!this.discovery || !this.reflector) return;
+
+    const discovered = this.discovery
+      .getProviders()
+      .filter((wrapper) => wrapper.metatype && wrapper.instance)
+      .filter((wrapper) => this.reflector?.get(EVENT_HANDLER_METADATA, wrapper.metatype!))
+      .map((wrapper) => wrapper.instance as DomainEventHandler);
+
+    this.register(...discovered);
+    this.logger.log(`registered ${discovered.length} domain event handler(s)`);
+  }
+
+  /**
+   * Adds handlers to the routing table. Public so a test can build a dispatcher with
+   * exactly the handlers it wants to reason about, with no DI container involved.
+   */
+  register(...handlers: DomainEventHandler[]): void {
     for (const handler of handlers) {
       const existing = this.byType.get(handler.eventType) ?? [];
       existing.push(handler);

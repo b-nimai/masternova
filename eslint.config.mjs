@@ -130,5 +130,8 @@ export default tseslint.config(
     },
   },
 
-  { files: ['**/*.spec.ts', '**/*.test.ts', '**/test/**/*.ts'], rules: { '@typescript-eslint/no-explicit-any': 'off' } },
+  {
+    files: ['**/*.spec.ts', '**/*.spec.tsx', '**/*.test.ts', '**/test/**/*.ts'],
+    rules: { '@typescript-eslint/no-explicit-any': 'off' },
+  },
 );

@@ -27,6 +27,13 @@ const envSchema = z.object({
   S3_ENDPOINT: z.string().url(),
   S3_PUBLIC_ENDPOINT: z.string().url().optional(),
 
+  // --- notification (task 1.3) ---
+  // Shared with the worker, which mints the unsubscribe links this app verifies. A
+  // mismatch is silent from the API's side: every link simply fails to verify.
+  UNSUBSCRIBE_SECRET: z.string().min(32),
+  // Absent means the bounce webhook rejects everything rather than trusting the caller.
+  MAIL_WEBHOOK_SECRET: z.string().optional(),
+
   // Google OAuth is opt-in: only wired when both id and secret are present.
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),

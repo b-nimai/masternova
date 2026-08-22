@@ -7,7 +7,11 @@ import { AppModule } from './app.module';
 import { appConfig } from './config/configuration';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
+    // The mail-provider webhook verifies an HMAC over the exact bytes it was sent, so the
+    // unparsed body has to survive as far as the controller.
+    rawBody: true,
+  });
 
   const { port, cookieSecret } = app.get<ConfigType<typeof appConfig>>(appConfig.KEY);
 
@@ -23,6 +27,13 @@ async function bootstrap() {
    * opaque lookup key into a table we control.
    */
   await app.register(fastifyCookie, { secret: cookieSecret });
+
+  /**
+   * RFC 8058 one-click unsubscribe POSTs `List-Unsubscribe=One-Click` as
+   * `application/x-www-form-urlencoded`. Nest's Fastify adapter already registers a parser
+   * for that content type, so nothing is needed here — and registering one anyway throws
+   * `FST_ERR_CTP_ALREADY_PRESENT` at boot, which is how this comment came to exist.
+   */
 
   // Every route is served under /api (PROJECT_PLAN.md §2 global prefix).
   app.setGlobalPrefix('api');

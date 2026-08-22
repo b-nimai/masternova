@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import type { Role, SessionRevokeReason } from '@masternova/db';
-import { UNIT_OF_WORK, type UnitOfWork } from '@masternova/contracts';
+import { IdentityEvent, UNIT_OF_WORK, type UnitOfWork } from '@masternova/contracts';
 import type { PrismaClient } from '@masternova/db';
 import { PrismaService } from '../../prisma/prisma.service';
 import { TokenService } from './token.service';
@@ -84,7 +84,12 @@ export class SessionService {
     }
 
     if (existing.usedAt) {
-      await this.revokeSession(existing.sessionId, 'REUSE_DETECTED');
+      await this.revokeOnReuse(existing.session.userId, existing.sessionId, {
+        email: existing.session.user.email,
+        name: existing.session.user.name,
+        userAgent: existing.session.userAgent,
+        ip: existing.session.ip,
+      });
       this.logger.warn(
         `refresh token reuse detected on session ${existing.sessionId} — session revoked`,
       );
@@ -136,6 +141,36 @@ export class SessionService {
     };
   }
 
+  /**
+   * Revokes a session because its refresh chain was replayed, and tells the owner.
+   *
+   * The email is the half of this control that people forget. Silently killing the
+   * session protects the account and leaves the human with no idea that a credential of
+   * theirs is in someone else's hands — which is the one fact they could act on.
+   *
+   * Revocation and the event commit together, so there is no state in which a session was
+   * killed for a security reason nobody will ever hear about.
+   */
+  private async revokeOnReuse(
+    userId: string,
+    sessionId: string,
+    device: { email: string; name: string | null; userAgent: string | null; ip: string | null },
+  ): Promise<void> {
+    await this.uow.execute(async (ctx) => {
+      const tx = ctx.executor as PrismaClient;
+      await tx.session.updateMany({
+        where: { id: sessionId, revokedAt: null },
+        data: { revokedAt: new Date(), revokedReason: 'REUSE_DETECTED' },
+      });
+      ctx.publish({
+        type: IdentityEvent.RefreshReuseDetected,
+        aggregateType: 'User',
+        aggregateId: userId,
+        payload: { sessionId, ...device },
+      });
+    });
+  }
+
   async revokeSession(sessionId: string, reason: SessionRevokeReason): Promise<void> {
     await this.prisma.session.updateMany({
       where: { id: sessionId, revokedAt: null },
@@ -159,11 +194,12 @@ export class SessionService {
       });
 
       if (count > 0 && reason !== 'LOGOUT') {
+        const user = await tx.user.findUnique({ where: { id: userId } });
         ctx.publish({
-          type: 'identity.sessions.revoked',
+          type: IdentityEvent.SessionsRevoked,
           aggregateType: 'User',
           aggregateId: userId,
-          payload: { reason, count },
+          payload: { reason, count, email: user?.email, name: user?.name },
         });
       }
       return count;

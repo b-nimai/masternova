@@ -7,9 +7,10 @@ module.exports = {
   preset: 'ts-jest',
   testEnvironment: 'node',
   rootDir: 'src',
-  testRegex: '.*\\.spec\\.ts$',
+  testRegex: '.*\\.spec\\.tsx?$',
   passWithNoTests: true,
-  transform: { '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/../tsconfig.json' }] },
+  transform: { '^.+\\.tsx?$': ['ts-jest', { tsconfig: '<rootDir>/../tsconfig.json' }] },
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'json', 'node'],
   collectCoverageFrom: ['**/*.ts', '!**/*.module.ts', '!main.ts'],
   moduleNameMapper: {
     '^@masternova/(.*)$': '<rootDir>/../../../packages/$1/src',

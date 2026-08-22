@@ -27,4 +27,10 @@ export type {
   RefreshToken,
   VerificationToken,
   VerificationPurpose,
+  EmailDelivery,
+  EmailDeliveryStatus,
+  EmailSuppression,
+  SuppressionReason,
+  NotificationCategory,
+  NotificationPreference,
 } from '@prisma/client';

@@ -43,8 +43,9 @@ model User {
   createdAt     DateTime  @default(now())
   updatedAt     DateTime  @updatedAt
 
-  sessions           Session[]
-  verificationTokens VerificationToken[]
+  sessions                Session[]
+  verificationTokens      VerificationToken[]
+  notificationPreferences NotificationPreference[]
 
   @@index([role])
 }
@@ -218,4 +219,114 @@ model IdempotencyRecord {
 
   @@unique([scope, key])
   @@index([expiresAt])
+}
+
+// ─── notification ────────────────────────────────────────────────────────────
+// Owned by apps/worker/src/modules/notification (the send pipeline) and
+// apps/api/src/modules/notification (preference centre, unsubscribe, bounce webhook).
+// Split across two deployables for the same reason the outbox is: sending is a
+// background effect with a poll-loop lifecycle, preferences are a request.
+
+/// What a message is *about*. Preferences and unsubscribe operate on this, never on
+/// individual templates — nobody wants a checkbox per email.
+///
+/// The mandatory/optional split is a product decision encoded in `MANDATORY_CATEGORIES`
+/// (notification.service.ts), not in the database: a receipt or a password-reset link is
+/// part of the transaction the user asked for, and offering to switch it off would be
+/// dishonest. Everything else is opt-out.
+enum NotificationCategory {
+  /// Verification, reset links, password changed, new-device alerts. Mandatory.
+  ACCOUNT_SECURITY
+  /// Receipts, invoices, refunds, enrollment confirmations. Mandatory.
+  PURCHASE
+  /// Transcript ready, transcode failed, course published. Optional.
+  COURSE_ACTIVITY
+  /// Reviews, Q&A replies. Optional.
+  ENGAGEMENT
+  /// Announcements and product news. Optional.
+  PRODUCT_NEWS
+}
+
+enum EmailDeliveryStatus {
+  /// Claimed, provider call in flight. A row stuck here past the staleness window is
+  /// a crashed sender and is retried.
+  SENDING
+  SENT
+  /// The provider rejected it. The outbox retries the handler, which retries this row.
+  FAILED
+  /// Deliberately not sent: the address is suppressed, or the user opted out.
+  SUPPRESSED
+  /// Set by the provider webhook, after the fact.
+  BOUNCED
+  COMPLAINED
+}
+
+/// One attempt to email one person about one event.
+///
+/// `(eventId, template, recipient)` is unique, and that uniqueness *is* the idempotency
+/// guarantee: the outbox delivers at-least-once, so the same event will be handled twice,
+/// and the second attempt loses the insert race and sends nothing. This is the row that
+/// makes "relay it twice, still one email" true.
+model EmailDelivery {
+  id String @id @default(cuid())
+
+  /// The outbox event that caused this send.
+  eventId   String
+  template  String
+  recipient String
+
+  userId   String?
+  category NotificationCategory
+  subject  String
+
+  status            EmailDeliveryStatus @default(SENDING)
+  /// The provider's id for the message. It is how a later bounce webhook finds this row.
+  providerMessageId String?
+  attempts          Int                 @default(1)
+  /// Provider error, or the reason a send was suppressed. One column because a human
+  /// reading the delivery log wants one answer to "why didn't this arrive?".
+  detail            String?
+
+  sentAt    DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  @@unique([eventId, template, recipient])
+  @@index([recipient, createdAt])
+  @@index([status, createdAt])
+  @@index([providerMessageId])
+}
+
+enum SuppressionReason {
+  /// The mailbox does not exist. Continuing to send to it is what destroys sender
+  /// reputation, which is why this outranks even mandatory categories.
+  HARD_BOUNCE
+  /// The recipient pressed "this is spam".
+  COMPLAINT
+  MANUAL
+}
+
+/// Addresses we must not email again, for any reason, until a human clears them.
+///
+/// Separate from `NotificationPreference` on purpose: a preference is a choice about a
+/// category, a suppression is a fact about an address. Conflating them means a hard
+/// bounce silently reads as "opted out of marketing" and the receipt still goes out.
+model EmailSuppression {
+  email     String            @id
+  reason    SuppressionReason
+  detail    String?
+  createdAt DateTime          @default(now())
+}
+
+/// A user's opt-out for one optional category. Absent row = subscribed, so a new user
+/// needs no rows written at signup and a new category defaults to on.
+model NotificationPreference {
+  userId   String
+  category NotificationCategory
+  enabled  Boolean
+
+  updatedAt DateTime @updatedAt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([userId, category])
 }

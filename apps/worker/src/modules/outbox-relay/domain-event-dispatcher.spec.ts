@@ -52,8 +52,11 @@ const handler = (
   return h;
 };
 
-const make = (handlers: DomainEventHandler[], prisma = new FakePrisma()) =>
-  [new DomainEventDispatcher(prisma as any, handlers), prisma] as const;
+const make = (handlers: DomainEventHandler[], prisma = new FakePrisma()) => {
+  const dispatcher = new DomainEventDispatcher(prisma as any);
+  dispatcher.register(...handlers);
+  return [dispatcher, prisma] as const;
+};
 
 describe('DomainEventDispatcher', () => {
   it('runs every handler registered for the event type', async () => {

@@ -8,7 +8,8 @@ module.exports = {
   rootDir: 'test',
   testRegex: '.*\\.int-spec\\.ts$',
   testTimeout: 120_000,
-  transform: { '^.+\\.ts$': ['ts-jest', { tsconfig: '<rootDir>/../tsconfig.json' }] },
+  transform: { '^.+\\.tsx?$': ['ts-jest', { tsconfig: '<rootDir>/../tsconfig.json' }] },
+  moduleFileExtensions: ['ts', 'tsx', 'js', 'json', 'node'],
   moduleNameMapper: {
     '^@masternova/(.*)$': '<rootDir>/../../../packages/$1/src',
     // packages/* are ESM source and so carry explicit .js extensions on relative

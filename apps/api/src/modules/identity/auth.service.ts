@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import * as argon2 from 'argon2';
 import type { ConfigType } from '@nestjs/config';
 import type { User } from '@masternova/db';
-import { UNIT_OF_WORK, type UnitOfWork } from '@masternova/contracts';
+import { IdentityEvent, UNIT_OF_WORK, type UnitOfWork } from '@masternova/contracts';
 import type { PublicUser } from '@masternova/shared';
 import { identityConfig } from '../../config/configuration';
 import {
@@ -53,7 +53,7 @@ export class AuthService {
       );
 
       ctx.publish({
-        type: 'identity.user.registered',
+        type: IdentityEvent.UserRegistered,
         aggregateType: 'User',
         aggregateId: user.id,
         payload: { email: user.email, name: user.name },
@@ -63,8 +63,8 @@ export class AuthService {
         ctx,
         user.id,
         'EMAIL_VERIFICATION',
-        'identity.email.verification_requested',
-        { email: user.email },
+        IdentityEvent.EmailVerificationRequested,
+        { email: user.email, name: user.name },
       );
 
       return user;
@@ -110,7 +110,7 @@ export class AuthService {
       // The provider already proved the address, so no verification token is issued.
       await this.users.markEmailVerified(user.id, ctx.executor);
       ctx.publish({
-        type: 'identity.user.registered',
+        type: IdentityEvent.UserRegistered,
         aggregateType: 'User',
         aggregateId: user.id,
         payload: { email: user.email, name: user.name, verified: true },
@@ -123,11 +123,14 @@ export class AuthService {
     await this.uow.execute(async (ctx) => {
       const userId = await this.verification.redeem(token, 'EMAIL_VERIFICATION', ctx.executor);
       await this.users.markEmailVerified(userId, ctx.executor);
+      const user = await this.users.findById(userId);
       ctx.publish({
-        type: 'identity.email.verified',
+        type: IdentityEvent.EmailVerified,
         aggregateType: 'User',
         aggregateId: userId,
-        payload: {},
+        // The address travels on the event so the welcome email needs no lookup back
+        // into identity. A consumer that queries the producer is not decoupled from it.
+        payload: { email: user?.email, name: user?.name },
       });
     });
   }
@@ -148,7 +151,7 @@ export class AuthService {
         ctx,
         user.id,
         'PASSWORD_RESET',
-        'identity.password.reset_requested',
+        IdentityEvent.PasswordResetRequested,
         { email: user.email, name: user.name },
       );
     });
@@ -167,11 +170,12 @@ export class AuthService {
     const userId = await this.uow.execute(async (ctx) => {
       const id = await this.verification.redeem(token, 'PASSWORD_RESET', ctx.executor);
       await this.users.updatePasswordHash(id, passwordHash, ctx.executor);
+      const user = await this.users.findById(id);
       ctx.publish({
-        type: 'identity.password.changed',
+        type: IdentityEvent.PasswordChanged,
         aggregateType: 'User',
         aggregateId: id,
-        payload: { via: 'reset' },
+        payload: { email: user?.email, name: user?.name, via: 'reset' },
       });
       return id;
     });

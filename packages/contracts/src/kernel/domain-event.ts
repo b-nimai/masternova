@@ -45,5 +45,11 @@ export interface DomainEventHandler<TPayload = unknown> {
   handle(event: DomainEvent<TPayload>): Promise<void>;
 }
 
-/** Multi-provider token: every handler registers against this, the dispatcher collects them. */
-export const DOMAIN_EVENT_HANDLER = Symbol('DOMAIN_EVENT_HANDLER');
+/**
+ * Handlers are found by discovery, not by injection: the worker's `@EventHandler()`
+ * decorator marks a provider and the dispatcher collects every marked provider at
+ * bootstrap. There is deliberately no injection token here — a token would have to be
+ * imported by both the kernel and every context, and Nest's `multi` providers do not
+ * merge across modules, so the second context to register would silently shadow the
+ * first (CLAUDE.md §1 O).
+ */
