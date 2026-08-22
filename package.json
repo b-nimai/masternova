@@ -19,7 +19,8 @@
     "test:int": "pnpm -r test:int",
     "db:generate": "pnpm --filter @masternova/db run generate",
     "db:migrate": "pnpm --filter @masternova/db run migrate:dev",
-    "db:deploy": "pnpm --filter @masternova/db run migrate:deploy"
+    "db:deploy": "pnpm --filter @masternova/db run migrate:deploy",
+    "ci:local": "bash scripts/ci-local.sh"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
