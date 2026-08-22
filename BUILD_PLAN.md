@@ -3,7 +3,7 @@
 > The file you open at the start of every session to decide what to do next.
 > Plan: [`PROJECT_PLAN.md`](./PROJECT_PLAN.md) · Pitch: [`PITCH.md`](./PITCH.md) · Rules: [`CLAUDE.md`](./CLAUDE.md)
 
-**Created:** 2026-08-22 · **Last updated:** 2026-08-22 · **Status:** Phase 0 in progress (11/12 written, unverified)
+**Created:** 2026-08-22 · **Last updated:** 2026-08-22 · **Status:** Phase 0 complete and verified — next up: task 1.1 (platform kernel)
 
 ---
 
@@ -109,47 +109,38 @@ class is the correct design, and YAGNI beats speculative generality.
 
 | Phase                                                       | Tasks  | Done   | Est       | Spent | Status |
 | ----------------------------------------------------------- | ------ | ------ | --------- | ----- | ------ |
-| [0 — Foundation](#5-phase-0--foundation)                    | 12     | 11     | 18 h      | ~6 h  | 🔨     |
+| [0 — Foundation](#5-phase-0--foundation)                    | 12     | 12     | 18 h      | ~9 h  | ✅     |
 | [1A — Backend: core spine](#6-phase-1a--backend-core-spine) | 11     | 0      | 180 h     | —     | ☐      |
 | [2 — DevOps & hosting](#8-phase-2--devops--hosting)         | 11     | 0      | 59 h      | —     | ☐      |
 | [3 — Frontend](#9-phase-3--frontend)                        | 14     | 0      | 75 h      | —     | ☐      |
 | [4 — Integration](#10-phase-4--integration)                 | 5      | 0      | 18 h      | —     | ☐      |
 | [1B — Backend: depth](#7-phase-1b--backend-depth)           | 4      | 0      | 64 h      | —     | ☐      |
 | [5 — Refinement & proof](#11-phase-5--refinement--proof)    | 8      | 0      | 42 h      | —     | ☐      |
-| **Total**                                                   | **65** | **11** | **456 h** | ~6 h  |        |
+| **Total**                                                   | **65** | **12** | **456 h** | ~9 h  |        |
 
-### ⛔ Blocker — the toolchain is not installed on this machine
+### ✅ Environment verified (2026-08-22)
 
-Checked 2026-08-22: this box has **git only**. No `node`, no `pnpm`, no `docker`, no `gh`
-(`/usr/bin` is fully visible, so they are genuinely absent, not sandboxed away). Loom's
-`.next/` is dated May 31, so the toolchain was either removed since or that build came
-from elsewhere.
+| Tool | Version | Notes |
+| --- | --- | --- |
+| Node | 24.19.0 | via nvm; pinned in `.nvmrc`, `engines`, CI and `node:24-slim` |
+| pnpm | 11.5.0 | via corepack. **Overrides live in `pnpm-workspace.yaml`**, not `package.json` |
+| Docker | 29.7.2 | Compose v5.5.0 |
 
-**What this blocks right now**
+The `docker` group was added but needs a re-login to take effect in a shell;
+until then prefix with `sg docker -c '<command>'`.
 
-| Blocked              | Why it matters                                                                                                          |
-| -------------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `pnpm install`       | No lockfile exists yet, and nothing written in Phase 0 has been typechecked, linted, or run                             |
-| `prisma migrate dev` | `migrations/` is empty, so `docker compose up` will start the API and then fail — `migrate deploy` has nothing to apply |
-| `docker compose up`  | The Phase 0 exit check cannot run                                                                                       |
-| **`nest g …`**       | `CLAUDE.md` §4 makes the generators mandatory for every Nest building block. **All of Phase 1A is blocked on this**     |
-| `gh repo create`     | The GitHub remote must be created manually or by installing `gh`                                                        |
+**Phase 0 exit check — all green**
 
-**To unblock**
-
-```bash
-# Node 22 via nvm (no root needed)
-curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-exec $SHELL -l && nvm install 22 && corepack enable
-
-# Docker Engine + compose plugin (needs root)
-curl -fsSL https://get.docker.com | sudo sh && sudo usermod -aG docker $USER   # re-login after
-
-# GitHub CLI (optional — the remote can be created in the browser instead)
-sudo apt install gh && gh auth login
+```
+pnpm install && pnpm --filter "./packages/**" build && pnpm db:generate
+pnpm format:check && pnpm lint && pnpm typecheck        # clean
+pnpm --filter @masternova/api test:int                   # 2 passed (real PG + Redis)
+docker compose up -d --build                             # 6 services, api + worker healthy
 ```
 
-Then run the Phase 0 exit check at the bottom of §5.
+Proven end-to-end: pgvector 0.8.6 installed · MinIO bucket + CORS created by the
+init sidecar · migrations applied on boot · register → login → `/auth/me` works
+with the session cookie, 401 without it, and Zod validation returns the error envelope.
 
 ### Gate A — "applyable" (~258 h)
 
@@ -160,6 +151,20 @@ after it is depth you add _while_ applying, not a blocker to applying.
 > **Reality check.** 456 h at ~14.5 h/week is ~31 weeks. `DSA Learing/daily-tracker.md`
 > records a switch deadline of **2026-11-28**, apply phase opening **Oct 20**. Those do not
 > fit. That is why Gate A exists — it is the honest milestone, not the finish line.
+
+---
+
+## 2.1 Deviations from the plan (Phase 0)
+
+Recorded because the tracker is only useful if it says what actually happened.
+
+| Deviation | Why |
+| --- | --- |
+| **Added `packages/db`** (not in the plan) | The worker needs the same models the API writes. Leaving the schema in `apps/api` made the worker's build reach into another app's files — the boundary violation §4 forbids between modules, one level up. The worker crashed on boot until this moved. Cheap now, expensive after Phase 1 puts 30 models in it. |
+| **Dropped Loom's `queue` module** (plan §5 listed it) | It was named for Loom's video domain. ADR-0002's whole argument is not carrying that forward. The `jobId` dedupe idea it carried is recorded against task 1.7. |
+| **Replaced `use-video-upload.ts` with `lib/multipart-upload.ts`** | The hook coupled the transport to React and to Loom's `/videos` endpoints. The valuable part — bounded concurrency, per-part retries, ETag handling — is now domain-free and testable without a DOM. |
+| **Node 24, not 22** | The Dockerfiles already said `node:24-slim`; the CI pin was the outlier. 24 is the current active LTS. |
+| **`apps/web` is foundation-only** | shadcn primitives, auth form, lib helpers. Pages and the domain client are Phase 3. |
 
 ---
 
