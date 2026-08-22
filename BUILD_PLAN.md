@@ -112,19 +112,19 @@ class is the correct design, and YAGNI beats speculative generality.
 | [0 — Foundation](#5-phase-0--foundation)                    | 12     | 12     | 18 h      | ~9 h  | ✅     |
 | [1A — Backend: core spine](#6-phase-1a--backend-core-spine) | 11     | 0      | 180 h     | —     | ☐      |
 | [2 — DevOps & hosting](#8-phase-2--devops--hosting)         | 11     | 0      | 59 h      | —     | ☐      |
-| [3 — Frontend](#9-phase-3--frontend)                        | 14     | 0      | 75 h      | —     | ☐      |
+| [3 — Frontend](#9-phase-3--frontend)                        | 16     | 0      | 84 h      | —     | ☐      |
 | [4 — Integration](#10-phase-4--integration)                 | 5      | 0      | 18 h      | —     | ☐      |
-| [1B — Backend: depth](#7-phase-1b--backend-depth)           | 4      | 0      | 64 h      | —     | ☐      |
+| [1B — Backend: depth](#7-phase-1b--backend-depth)           | 6      | 0      | 96 h      | —     | ☐      |
 | [5 — Refinement & proof](#11-phase-5--refinement--proof)    | 8      | 0      | 42 h      | —     | ☐      |
-| **Total**                                                   | **65** | **12** | **456 h** | ~9 h  |        |
+| **Total**                                                   | **69** | **12** | **497 h** | ~9 h  |        |
 
 ### ✅ Environment verified (2026-08-22)
 
-| Tool | Version | Notes |
-| --- | --- | --- |
-| Node | 24.19.0 | via nvm; pinned in `.nvmrc`, `engines`, CI and `node:24-slim` |
-| pnpm | 11.5.0 | via corepack. **Overrides live in `pnpm-workspace.yaml`**, not `package.json` |
-| Docker | 29.7.2 | Compose v5.5.0 |
+| Tool   | Version | Notes                                                                         |
+| ------ | ------- | ----------------------------------------------------------------------------- |
+| Node   | 24.19.0 | via nvm; pinned in `.nvmrc`, `engines`, CI and `node:24-slim`                 |
+| pnpm   | 11.5.0  | via corepack. **Overrides live in `pnpm-workspace.yaml`**, not `package.json` |
+| Docker | 29.7.2  | Compose v5.5.0                                                                |
 
 The `docker` group was added but needs a re-login to take effect in a shell;
 until then prefix with `sg docker -c '<command>'`.
@@ -148,7 +148,7 @@ Phases 0 + 1A + 2, plus the demo slice of Phase 3 (auth, catalog, checkout, play
 README. **At this line the project is deployed, demoable, and resume-ready.** Everything
 after it is depth you add _while_ applying, not a blocker to applying.
 
-> **Reality check.** 456 h at ~14.5 h/week is ~31 weeks. `DSA Learing/daily-tracker.md`
+> **Reality check.** 497 h at ~14.5 h/week is ~34 weeks. `DSA Learing/daily-tracker.md`
 > records a switch deadline of **2026-11-28**, apply phase opening **Oct 20**. Those do not
 > fit. That is why Gate A exists — it is the honest milestone, not the finish line.
 
@@ -158,13 +158,14 @@ after it is depth you add _while_ applying, not a blocker to applying.
 
 Recorded because the tracker is only useful if it says what actually happened.
 
-| Deviation | Why |
-| --- | --- |
-| **Added `packages/db`** (not in the plan) | The worker needs the same models the API writes. Leaving the schema in `apps/api` made the worker's build reach into another app's files — the boundary violation §4 forbids between modules, one level up. The worker crashed on boot until this moved. Cheap now, expensive after Phase 1 puts 30 models in it. |
-| **Dropped Loom's `queue` module** (plan §5 listed it) | It was named for Loom's video domain. ADR-0002's whole argument is not carrying that forward. The `jobId` dedupe idea it carried is recorded against task 1.7. |
-| **Replaced `use-video-upload.ts` with `lib/multipart-upload.ts`** | The hook coupled the transport to React and to Loom's `/videos` endpoints. The valuable part — bounded concurrency, per-part retries, ETag handling — is now domain-free and testable without a DOM. |
-| **Node 24, not 22** | The Dockerfiles already said `node:24-slim`; the CI pin was the outlier. 24 is the current active LTS. |
-| **`apps/web` is foundation-only** | shadcn primitives, auth form, lib helpers. Pages and the domain client are Phase 3. |
+| Deviation                                                         | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Added `packages/db`** (not in the plan)                         | The worker needs the same models the API writes. Leaving the schema in `apps/api` made the worker's build reach into another app's files — the boundary violation §4 forbids between modules, one level up. The worker crashed on boot until this moved. Cheap now, expensive after Phase 1 puts 30 models in it.                                                                                                                                                                                       |
+| **Dropped Loom's `queue` module** (plan §5 listed it)             | It was named for Loom's video domain. ADR-0002's whole argument is not carrying that forward. The `jobId` dedupe idea it carried is recorded against task 1.7.                                                                                                                                                                                                                                                                                                                                          |
+| **Replaced `use-video-upload.ts` with `lib/multipart-upload.ts`** | The hook coupled the transport to React and to Loom's `/videos` endpoints. The valuable part — bounded concurrency, per-part retries, ETag handling — is now domain-free and testable without a DOM.                                                                                                                                                                                                                                                                                                    |
+| **Node 24, not 22**                                               | The Dockerfiles already said `node:24-slim`; the CI pin was the outlier. 24 is the current active LTS.                                                                                                                                                                                                                                                                                                                                                                                                  |
+| **`apps/web` is foundation-only**                                 | shadcn primitives, auth form, lib helpers. Pages and the domain client are Phase 3.                                                                                                                                                                                                                                                                                                                                                                                                                     |
+| **Reinstated the AI layer** (2026-08-22, after Phase 0)           | The original cut argued recurring API cost, assuming a paid Whisper. Self-hosted removes the cost _and_ strengthens the worker-fleet story — two CPU-bound job types on one autoscaled pool. The cut also claimed transcode already proved the async signal, which was too narrow: timestamp-aligned chunking, hybrid retrieval, SSE streaming with backpressure, server-side token budgets and prompt-injection defence appear nowhere else in the plan. Now tasks 1.16–1.17 (Phase 1B) and 3.15–3.16. |
 
 ---
 
@@ -196,16 +197,17 @@ Settled 2026-08-22. Do not re-litigate; if one changes, write an ADR.
 ### Built (the `PROJECT_PLAN.md` §11 cut list is mostly reinstated)
 
 Reviews + rating aggregation (§4.8) · Typesense + pgvector search (§4.7) · double-entry
-payout ledger (§4.3) · coupons · refunds · analytics rollups · full transactional email.
+payout ledger (§4.3) · coupons · refunds · analytics rollups · full transactional email ·
+**self-hosted transcription + "ask this video" RAG** (tasks 1.16–1.17).
 
 ### Cut — each owes an ADR
 
-| Cut                                                                          | Why                                                                                                                                                                                                                       | ADR    |
-| ---------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
-| AI transcription / summarization                                             | Recurring API cost, and the backend signal it carries (an async job) is **already fully proved by the transcode DAG**. Embeddings over course/lecture _text_ still ship, so pgvector semantic search survives without it. | `0007` |
-| Helm / K8s variant                                                           | ECS is the live target. A second orchestrator is config, not signal — `PROJECT_PLAN.md` §12 already agrees.                                                                                                               | `0008` |
-| Certificates                                                                 | A PDF generator. No interesting force behind it.                                                                                                                                                                          | `0009` |
-| Microservices-first, Kafka, service mesh, custom DRM, multi-tenancy, GraphQL | `PROJECT_PLAN.md` §12. §10 is the answer if asked.                                                                                                                                                                        | `0001` |
+| Cut                                                                          | Why                                                                                                                                                                                                                                                | ADR    |
+| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------ |
+| Managed transcription API (Whisper API, AWS Transcribe)                      | Transcription is **self-hosted in the worker** instead — free, and it is CPU-bound and bursty, which is precisely the load profile that justifies a separately-autoscaled worker fleet. Paying per minute would cost money _and_ weaken the story. | `0007` |
+| Helm / K8s variant                                                           | ECS is the live target. A second orchestrator is config, not signal — `PROJECT_PLAN.md` §12 already agrees.                                                                                                                                        | `0008` |
+| Certificates                                                                 | A PDF generator. No interesting force behind it.                                                                                                                                                                                                   | `0009` |
+| Microservices-first, Kafka, service mesh, custom DRM, multi-tenancy, GraphQL | `PROJECT_PLAN.md` §12. §10 is the answer if asked.                                                                                                                                                                                                 | `0001` |
 
 Being able to say _"I scoped that out on purpose, and here's the design I'd build"_ is a
 stronger signal than a half-finished implementation. Interviewers probe scope judgement.
@@ -267,7 +269,7 @@ Prisma domain · `app/(app)/*` pages.
 | 0.7  | **Fix:** enable pgvector (`postgresqlExtensions`) — the image is `pgvector/pgvector:pg16` but the extension is never enabled                                                                                                     |                                                        | 0.5 h | ✅     | 2026-08-22 |
 | 0.8  | **Fix:** wire Prisma into `apps/worker` — it gets `DATABASE_URL` but has no client. Drop the unused `@fastify/cookie` dep                                                                                                        |                                                        | 1 h   | ✅     | 2026-08-22 |
 | 0.9  | Create `packages/contracts` — empty but real. **This is the §4 seam and does not exist in Loom**                                                                                                                                 | Module public interfaces live here                     | 1 h   | ✅     | 2026-08-22 |
-| 0.10 | Test harness: Jest + `@nestjs/testing` + **Testcontainers**, with one green integration test proving real Postgres + Redis spin up                                                                                               | Loom has **zero** tests                                | 3 h   | ✅      | 2026-08-22 |
+| 0.10 | Test harness: Jest + `@nestjs/testing` + **Testcontainers**, with one green integration test proving real Postgres + Redis spin up                                                                                               | Loom has **zero** tests                                | 3 h   | ✅     | 2026-08-22 |
 | 0.11 | `docs/` tree per `CLAUDE.md` §7.1; commit §7.3's LLD template as `docs/lld/_TEMPLATE.md`                                                                                                                                         | Never improvise the shape per file                     | 1 h   | ✅     | 2026-08-22 |
 | 0.12 | GH Actions: lint + typecheck + unit + integration on every PR, from day one                                                                                                                                                      |                                                        | 3 h   | ✅     | 2026-08-22 |
 
@@ -306,24 +308,25 @@ pnpm -r typecheck && pnpm -r lint && pnpm -r test    # all green
 Owned by task 1.3, emitted by 1.2 / 1.5 / 1.7 / 1.9 / 1.10 / 1.14. Every one is an
 **outbox event → relay worker → `MailProvider`** — never a direct send on the request path.
 
-| Trigger                        | Email                                                                  | Emitted by        |
-| ------------------------------ | ---------------------------------------------------------------------- | ----------------- |
-| Signup                         | **Verify your email** (signed, single-use, expiring token)             | identity          |
-| Verified                       | Welcome + getting started                                              | identity          |
-| Forgot password                | **Reset link** (single-use, expiring, invalidated on use)              | identity          |
-| Password changed               | Security notice — "this wasn't you?"                                   | identity          |
-| New device / suspicious login  | Security alert (ties into refresh-reuse detection)                     | identity          |
-| Order paid                     | **Receipt + invoice**                                                  | commerce          |
-| Payment failed / order expired | Recovery email with a resume-checkout link                             | commerce          |
-| Refund processed               | Refund confirmation + access-revoked notice                            | commerce          |
-| Enrolled                       | Course access + where to start                                         | enrollment        |
-| Course published               | Instructor confirmation                                                | catalog-authoring |
-| Transcode failed               | Instructor alert with the DLQ replay link                              | media / worker    |
-| New review on your course      | Instructor notification (respects preferences)                         | engagement (1B)   |
-| New Q&A question / answer      | Both directions                                                        | engagement (1B)   |
-| Contact form submitted         | Copy to admin + acknowledgement to sender                              | engagement (1B)   |
-| Payout batch settled           | Instructor statement                                                   | ledger (1B)       |
-| Any                            | Unsubscribe / preference-centre link in every non-transactional footer | notification      |
+| Trigger                        | Email                                                                            | Emitted by         |
+| ------------------------------ | -------------------------------------------------------------------------------- | ------------------ |
+| Signup                         | **Verify your email** (signed, single-use, expiring token)                       | identity           |
+| Verified                       | Welcome + getting started                                                        | identity           |
+| Forgot password                | **Reset link** (single-use, expiring, invalidated on use)                        | identity           |
+| Password changed               | Security notice — "this wasn't you?"                                             | identity           |
+| New device / suspicious login  | Security alert (ties into refresh-reuse detection)                               | identity           |
+| Order paid                     | **Receipt + invoice**                                                            | commerce           |
+| Payment failed / order expired | Recovery email with a resume-checkout link                                       | commerce           |
+| Refund processed               | Refund confirmation + access-revoked notice                                      | commerce           |
+| Enrolled                       | Course access + where to start                                                   | enrollment         |
+| Course published               | Instructor confirmation                                                          | catalog-authoring  |
+| Transcript ready               | Instructor notification — captions and ask-the-video are now live on the lecture | transcription (1B) |
+| Transcode failed               | Instructor alert with the DLQ replay link                                        | media / worker     |
+| New review on your course      | Instructor notification (respects preferences)                                   | engagement (1B)    |
+| New Q&A question / answer      | Both directions                                                                  | engagement (1B)    |
+| Contact form submitted         | Copy to admin + acknowledgement to sender                                        | engagement (1B)    |
+| Payout batch settled           | Instructor statement                                                             | ledger (1B)        |
+| Any                            | Unsubscribe / preference-centre link in every non-transactional footer           | notification       |
 
 **Design points worth defending in an interview.** Email is an _independently-failing
 effect_ — that is precisely the force behind the outbox (`CLAUDE.md` §2). Sends are
@@ -349,15 +352,17 @@ These are the interview artifacts, not box-ticking.
 
 ## 7. Phase 1B — Backend: depth
 
-**Est 64 h** · Runs after Phase 4 by default (keeps the project deployable earliest), or
+**Est 96 h** · Runs after Phase 4 by default (keeps the project deployable earliest), or
 straight after 1A if you prefer pure backend-first.
 
-| #    | Module         | Problem                                                                                                                                                                                                                                                                                               | Patterns                                                          | Est  | Status | Date |
-| ---- | -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------- | ---- | ------ | ---- |
-| 1.12 | **ledger**     | Double-entry instructor payouts — every rupee move is **two rows that sum to zero**. Platform fee split, tax withholding, refund reversal, payout batches. Immutable append-only; balances derived, never stored. Rare in portfolios, instantly credible.                                             | **Command** (postings as first-class objects) · **Specification** | 18 h | ☐      |      |
-| 1.13 | **search**     | Typesense (typo-tolerant, faceted: level/price/rating/category/language) + **pgvector** semantic search over course and lecture text. Index synced **via the same outbox — never dual-write.** Backfill/reindex CLI. Ranking blend: relevance × enrollment × rating × recency, tunable and explained. | **Observer** · **Strategy** (ranking) · **Adapter**               | 20 h | ☐      |      |
-| 1.14 | **engagement** | Reviews + **incremental** rating aggregation: denormalized `rating_count` / `rating_sum` / 1–5 histogram updated **inside the review transaction**, edits and deletes applying deltas, plus a reconciliation job that **proves the denormalized value never drifts**. Q&A. Contact messages.          | **Observer** · **Specification**                                  | 14 h | ☐      |      |
-| 1.15 | **analytics**  | Append-only event ingest, periodic rollups, instructor revenue dashboard queries.                                                                                                                                                                                                                     | —                                                                 | 12 h | ☐      |      |
+| #    | Module                     | Problem                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Patterns                                                                                                                                                                                                                                                              | Est  | Status | Date |
+| ---- | -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---- | ------ | ---- |
+| 1.12 | **ledger**                 | Double-entry instructor payouts — every rupee move is **two rows that sum to zero**. Platform fee split, tax withholding, refund reversal, payout batches. Immutable append-only; balances derived, never stored. Rare in portfolios, instantly credible.                                                                                                                                                                                                                                                                     | **Command** (postings as first-class objects) · **Specification**                                                                                                                                                                                                     | 18 h | ☐      |      |
+| 1.13 | **search**                 | Typesense (typo-tolerant, faceted: level/price/rating/category/language) + **pgvector** semantic search over course and lecture text. Index synced **via the same outbox — never dual-write.** Backfill/reindex CLI. Ranking blend: relevance × enrollment × rating × recency, tunable and explained.                                                                                                                                                                                                                         | **Observer** · **Strategy** (ranking) · **Adapter**                                                                                                                                                                                                                   | 20 h | ☐      |      |
+| 1.14 | **engagement**             | Reviews + **incremental** rating aggregation: denormalized `rating_count` / `rating_sum` / 1–5 histogram updated **inside the review transaction**, edits and deletes applying deltas, plus a reconciliation job that **proves the denormalized value never drifts**. Q&A. Contact messages.                                                                                                                                                                                                                                  | **Observer** · **Specification**                                                                                                                                                                                                                                      | 14 h | ☐      |      |
+| 1.15 | **analytics**              | Append-only event ingest, periodic rollups, instructor revenue dashboard queries.                                                                                                                                                                                                                                                                                                                                                                                                                                             | —                                                                                                                                                                                                                                                                     | 12 h | ☐      |      |
+| 1.16 | **transcription**          | Audio extracted in the existing job DAG → **self-hosted Whisper** in the worker → timestamped transcript segments → WebVTT captions on the player → transcript text feeds course search. No paid API, and it makes the worker fleet genuinely multi-workload: two CPU-bound job types competing for one autoscaled pool is a far better queue-depth story than one.                                                                                                                                                           | **Strategy** (transcription providers: local whisper.cpp · managed API · a fake for tests — genuinely interchangeable) · **Template Method** (reuses `BaseJobProcessor`)                                                                                              | 14 h | ☐      |      |
+| 1.17 | **ask-the-video (RAG)** ⭐ | Chunk the transcript on **timestamp boundaries**, embed into pgvector, hybrid retrieve (vector + keyword), answer over **SSE streaming** with citations that seek the player to `4:12`. Guarded by a **per-user token budget enforced server-side** and an input-scrubbing layer, because instructor-supplied content flows into an LLM. **Entitlement-gated** — you may only ask about a lecture you may watch, so the policy chain from task 1.8 applies unchanged. That reuse is the payoff of having built it as a chain. | **Adapter** (LLM provider ≠ your `ChatProvider` interface) · **Decorator** (budget guard + response cache wrapping the provider — cost control without touching the subject or its callers) · **Specification** (retrieval filters) · **Strategy** (embedding models) | 18 h | ☐      |      |
 
 ---
 
@@ -388,27 +393,29 @@ first frame) < 2 s p95 · upload → playable < 5 min p95.
 
 ## 9. Phase 3 — Frontend
 
-**Est 75 h** · Points at local compose throughout; deployed in Phase 4.
+**Est 84 h** · Points at local compose throughout; deployed in Phase 4.
 `CLAUDE.md` §5: reusable components first, thin pages, server components by default,
 `"use client"` only for interactive islands. **Extract design tokens once — don't hand-tune
 spacing per screen.**
 
-| #    | Task                                                                                                                                     | Notes                                                         | Est  | Status | Date |
-| ---- | ---------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ---- | ------ | ---- |
-| 3.1  | **Extract design tokens from the Figma** (it lives off-machine) + build the component library on top of Loom's shadcn base               | Everything else depends on this                               | 8 h  | ☐      |      |
-| 3.2  | TanStack Query + a typed client generated from `@masternova/shared`                                                                      | Loom has **no** data layer — `useState`+`useEffect` only      | 4 h  | ☐      |      |
-| 3.3  | `middleware.ts` for real server-side route protection                                                                                    | Loom's was client-side only (401 → `router.push`)             | 2 h  | ☐      |      |
-| 3.4  | Auth screens: signup · login · forgot password · reset · set-new-password · **verify-email landing**                                     | _Gate A_                                                      | 6 h  | ☐      |      |
-| 3.5  | **Notification preference centre + one-click unsubscribe page**                                                                          | Links inside the emails ⇒ frontend work the catalogue creates | 3 h  | ☐      |      |
-| 3.6  | Home                                                                                                                                     |                                                               | 4 h  | ☐      |      |
-| 3.7  | Course list — search, filter, facets, pagination                                                                                         | _Gate A_                                                      | 7 h  | ☐      |      |
-| 3.8  | Course detail                                                                                                                            | _Gate A_                                                      | 5 h  | ☐      |      |
-| 3.9  | Cart → checkout → payment callback → order confirmation                                                                                  | _Gate A_                                                      | 8 h  | ☐      |      |
-| 3.10 | **HLS player** — hls.js + signed cookies + progress heartbeats + `sendBeacon`                                                            | _Gate A_ · the demo centrepiece                               | 8 h  | ☐      |      |
-| 3.11 | Profile · edit profile · my enrolled courses                                                                                             |                                                               | 5 h  | ☐      |      |
-| 3.12 | Review modal + ratings display                                                                                                           |                                                               | 3 h  | ☐      |      |
-| 3.13 | Instructor: dashboard · all-courses · **multistep wizard** reusing Loom's `use-video-upload.ts` and consuming the SSE transcode progress |                                                               | 10 h | ☐      |      |
-| 3.14 | About · contact                                                                                                                          |                                                               | 2 h  | ☐      |      |
+| #    | Task                                                                                                                                                | Notes                                                         | Est  | Status | Date |
+| ---- | --------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------- | ---- | ------ | ---- |
+| 3.1  | **Extract design tokens from the Figma** (it lives off-machine) + build the component library on top of Loom's shadcn base                          | Everything else depends on this                               | 8 h  | ☐      |      |
+| 3.2  | TanStack Query + a typed client generated from `@masternova/shared`                                                                                 | Loom has **no** data layer — `useState`+`useEffect` only      | 4 h  | ☐      |      |
+| 3.3  | `middleware.ts` for real server-side route protection                                                                                               | Loom's was client-side only (401 → `router.push`)             | 2 h  | ☐      |      |
+| 3.4  | Auth screens: signup · login · forgot password · reset · set-new-password · **verify-email landing**                                                | _Gate A_                                                      | 6 h  | ☐      |      |
+| 3.5  | **Notification preference centre + one-click unsubscribe page**                                                                                     | Links inside the emails ⇒ frontend work the catalogue creates | 3 h  | ☐      |      |
+| 3.6  | Home                                                                                                                                                |                                                               | 4 h  | ☐      |      |
+| 3.7  | Course list — search, filter, facets, pagination                                                                                                    | _Gate A_                                                      | 7 h  | ☐      |      |
+| 3.8  | Course detail                                                                                                                                       | _Gate A_                                                      | 5 h  | ☐      |      |
+| 3.9  | Cart → checkout → payment callback → order confirmation                                                                                             | _Gate A_                                                      | 8 h  | ☐      |      |
+| 3.10 | **HLS player** — hls.js + signed cookies + progress heartbeats + `sendBeacon`                                                                       | _Gate A_ · the demo centrepiece                               | 8 h  | ☐      |      |
+| 3.11 | Profile · edit profile · my enrolled courses                                                                                                        |                                                               | 5 h  | ☐      |      |
+| 3.12 | Review modal + ratings display                                                                                                                      |                                                               | 3 h  | ☐      |      |
+| 3.13 | Instructor: dashboard · all-courses · **multistep wizard** reusing Loom's `use-video-upload.ts` and consuming the SSE transcode progress            |                                                               | 10 h | ☐      |      |
+| 3.14 | About · contact                                                                                                                                     |                                                               | 2 h  | ☐      |      |
+| 3.15 | **Ask-the-video panel** beside the player — streaming answers, citation chips that seek the player to the timestamp, visible remaining token budget | Pairs with task 1.17                                          | 6 h  | ☐      |      |
+| 3.16 | Captions (WebVTT) + searchable in-lecture transcript                                                                                                | Pairs with task 1.16                                          | 3 h  | ☐      |      |
 
 ---
 
@@ -467,6 +474,8 @@ and therefore wrong.
 | `ledger.md`                | 1.12  | ☐          | ☐        | ☐          | ☐      |
 | `search.md`                | 1.13  | ☐          | ☐        | ☐          | ☐      |
 | `engagement.md`            | 1.14  | ☐          | ☐        | ☐          | ☐      |
+| `transcription.md`         | 1.16  | ☐          | ☐        | ☐          | ☐      |
+| `ask-the-video.md` ⭐      | 1.17  | ☐          | ☐        | ☐          | ☐      |
 
 > §11 "Interview notes — 60-second recall" is the highest-value part of each file. Write it
 > **last**, keep it to genuinely sixty seconds, and keep it in the same shape as your
@@ -482,12 +491,14 @@ and therefore wrong.
 | 0004 | Outbox over direct publish                            | 1.1   | ☐      |
 | 0005 | ECS Fargate over EKS                                  | 2.6   | ☐      |
 | 0006 | Typesense over Elasticsearch                          | 1.13  | ☐      |
-| 0007 | AI transcription cut from v1                          | 4     | ☐      |
+| 0007 | Self-hosted Whisper over a managed transcription API  | 4     | ☐      |
 | 0008 | Helm/K8s variant cut                                  | 4     | ☐      |
 | 0009 | Certificates cut                                      | 4     | ☐      |
 | 0010 | Refresh rotation + reuse detection over stateless JWT | 1.2   | ☐      |
 | 0011 | Redis write-back for progress (accepting 30 s loss)   | 1.10  | ☐      |
 | 0012 | Postgres + pgvector over a dedicated vector DB        | 1.13  | ☐      |
+| 0013 | SSE streaming over WebSocket for chat responses       | 1.17  | ☐      |
+| 0014 | Token budget guard as a Decorator, not middleware     | 1.17  | ☐      |
 
 ### `docs/hld/`, `docs/runbooks/`, `docs/api/`, `docs/db/`
 

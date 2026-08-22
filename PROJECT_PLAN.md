@@ -126,10 +126,8 @@ Rare in portfolios, instantly credible in a backend interview.
 
 ### 4.4 Video ingest & transcode pipeline
 
-- Browser → **presigned S3 multipart upload**, resumable (upload session table tracks
-  parts; kill the network, resume from part N).
-- Completion → job DAG in BullMQ: `probe → transcode(240/480/720/1080 fanout) →
-package HLS → sprite+poster → transcribe → embed`.
+- Browser → **presigned S3 multipart upload**, resu
+
 - **Idempotent workers** (deterministic output keys, `INSERT ... ON CONFLICT`), exponential
   backoff, **DLQ** + replay endpoint, per-job progress streamed to the wizard via SSE.
 - Failure drill for the README: SIGKILL a worker mid-transcode → job re-runs → no duplicate
