@@ -1,0 +1,9 @@
+**/node_modules
+**/dist
+**/.next
+**/.turbo
+**/*.log
+.git
+.env
+.env.*
+.docker-data

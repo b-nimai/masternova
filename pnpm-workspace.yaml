@@ -1,0 +1,10 @@
+packages:
+  - "apps/*"
+  - "packages/*"
+
+# pnpm 10+ blocks dependency build scripts by default, which makes a non-interactive
+# `pnpm install` (e.g. in Docker) exit 1 (ERR_PNPM_IGNORED_BUILDS). Our deps genuinely
+# need their build scripts (argon2 native binding, prisma engines, esbuild, sharp), so
+# we restore the pre-pnpm-10 behaviour of running them. This is the documented setting;
+# the `onlyBuiltDependencies` allowlist was unreliable on this pnpm line.
+dangerouslyAllowAllBuilds: true

@@ -1,0 +1,67 @@
+name: CI
+
+# Phase 0 task 0.12 — lint, typecheck and tests on every PR, from the first commit.
+# Loom had no CI at all; a boundary rule that is not enforced in CI is a suggestion.
+# The build/scan/deploy stages are added in Phase 2 (tasks 2.2, 2.8).
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  static:
+    name: lint + typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # packages/* are tsup-built and consumed by the apps, so they must exist
+      # before typecheck resolves @masternova/shared and @masternova/contracts.
+      - run: pnpm --filter "./packages/**" build
+      - run: pnpm format:check
+      - run: pnpm lint
+      - run: pnpm typecheck
+
+  unit:
+    name: unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter "./packages/**" build
+      - run: pnpm --filter @masternova/api db:generate
+      - run: pnpm -r test:unit
+
+  integration:
+    name: integration tests (testcontainers)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm --filter "./packages/**" build
+      - run: pnpm --filter @masternova/api db:generate
+      # Testcontainers uses the Docker daemon that ubuntu-latest already provides.
+      - run: pnpm --filter @masternova/api test:int

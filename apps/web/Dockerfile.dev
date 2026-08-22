@@ -1,0 +1,12 @@
+# Dev image for the Next.js app. Build context is the repo ROOT.
+FROM node:24-slim
+
+RUN corepack enable
+WORKDIR /app
+
+COPY . .
+RUN pnpm install --frozen-lockfile=false
+
+WORKDIR /app/apps/web
+EXPOSE 3000
+CMD ["pnpm", "dev"]

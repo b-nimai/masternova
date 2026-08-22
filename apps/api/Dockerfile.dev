@@ -1,0 +1,20 @@
+# Dev image for the NestJS api. Production multi-stage Dockerfiles land in Phase 2 task 2.1.
+# Build context is the repo ROOT (so the workspace + packages are available).
+FROM node:24-slim
+
+# argon2 / prisma engines need these at runtime on slim.
+RUN apt-get update && apt-get install -y --no-install-recommends openssl python3 make g++ \
+  && rm -rf /var/lib/apt/lists/*
+
+RUN corepack enable
+WORKDIR /app
+
+# Install the whole workspace (simple + reliable for dev; CI/prod will prune later).
+COPY . .
+RUN pnpm install --frozen-lockfile=false
+
+WORKDIR /app/apps/api
+RUN pnpm db:generate
+
+EXPOSE 3001
+CMD ["pnpm", "dev"]

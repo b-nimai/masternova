@@ -1,0 +1,154 @@
+# Local dev stack for Masternova. One command brings up the whole thing (CLAUDE.md §8).
+#
+# Running the API on the host can fail if a native Postgres holds port 5432 — prefer
+# compose; the apps reach `postgres:5432` on the internal network.
+#
+# For faster hot reload you can run only the infra here and the apps on the host:
+#   docker compose up postgres redis minio minio-init mailpit
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: masternova
+      POSTGRES_PASSWORD: masternova
+      POSTGRES_DB: masternova
+    ports:
+      - '5432:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U masternova']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - '6379:6379'
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - '9000:9000' # S3 API
+      - '9001:9001' # web console
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ['CMD', 'mc', 'ready', 'local']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Phase 0 task 0.6. Loom had no bucket bootstrap, so the browser multipart uploader
+  # could not read the ETag header off each part response and uploads failed to
+  # complete. CORS must expose ETag — that header is how the client assembles the
+  # CompleteMultipartUpload payload.
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin;
+      mc mb --ignore-existing local/masternova-media;
+      mc anonymous set download local/masternova-media/public;
+      mc admin config set local api cors_allow_origin='http://localhost:3000';
+      echo 'minio-init: bucket + cors ready';
+      "
+
+  mailpit: # local SMTP inbox; every email in the §6.1 catalogue lands here in dev
+    image: axllent/mailpit:latest
+    ports:
+      - '1025:1025' # SMTP
+      - '8025:8025' # web UI — http://localhost:8025
+
+  api:
+    build:
+      context: .
+      dockerfile: apps/api/Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      API_PORT: 3001
+      DATABASE_URL: postgresql://masternova:masternova@postgres:5432/masternova?schema=public
+      REDIS_URL: redis://redis:6379
+      SESSION_SECRET: dev-secret-change-me-please-32-chars-min
+      SESSION_SALT: masternova-dev16 # exactly 16 chars (libsodium requirement)
+      S3_ENDPOINT: http://minio:9000 # server-side ops over the docker network
+      S3_PUBLIC_ENDPOINT: http://localhost:9000 # signed into browser part-upload URLs
+      S3_REGION: us-east-1
+      S3_BUCKET: masternova-media
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
+      SMTP_HOST: mailpit
+      SMTP_PORT: 1025
+      # Google OAuth is optional; set these to enable "Continue with Google".
+      # GOOGLE_CLIENT_ID: ''
+      # GOOGLE_CLIENT_SECRET: ''
+      # GOOGLE_CALLBACK_URL: http://localhost:3000/api/auth/google/callback
+    # Phase 0 task 0.5. Loom ran `prisma db push` here because it had no migrations.
+    # `db push` outside local dev is banned (CLAUDE.md §4) and it hides drift, so the
+    # stack now applies real migrations on boot — the same command CI and prod run.
+    command: sh -c "pnpm prisma migrate deploy && pnpm dev"
+    ports:
+      - '3001:3001'
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio-init:
+        condition: service_completed_successfully
+    volumes:
+      - ./apps/api/src:/app/apps/api/src
+      - ./apps/api/prisma:/app/apps/api/prisma
+      - ./packages:/app/packages
+
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      REDIS_URL: redis://redis:6379
+      DATABASE_URL: postgresql://masternova:masternova@postgres:5432/masternova?schema=public
+    depends_on:
+      redis:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./apps/worker/src:/app/apps/worker/src
+      - ./packages:/app/packages
+
+  web:
+    build:
+      context: .
+      dockerfile: apps/web/Dockerfile.dev
+    environment:
+      NODE_ENV: development
+      API_URL: http://api:3001
+    ports:
+      - '3000:3000'
+    depends_on:
+      - api
+    volumes:
+      - ./apps/web/app:/app/apps/web/app
+      - ./apps/web/components:/app/apps/web/components
+      - ./apps/web/lib:/app/apps/web/lib
+      - ./packages:/app/packages
+
+volumes:
+  pgdata:
+  miniodata:

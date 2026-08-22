@@ -1,0 +1,47 @@
+// Masternova — Prisma schema.
+//
+// Models are added by the module that owns them, in bounded-context blocks (CLAUDE.md §4).
+// Phase 0 establishes only the identity seed; catalog, media, commerce, enrollment,
+// engagement, notification and analytics models arrive with their modules in Phase 1.
+//
+// Schema changes go through `prisma migrate dev` — never `db push` outside local dev,
+// and never hand-edit the generated client.
+
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["postgresqlExtensions"]
+}
+
+datasource db {
+  provider   = "postgresql"
+  url        = env("DATABASE_URL")
+  // pgvector backs semantic search over course and lecture text (task 1.13).
+  // The compose image is already pgvector/pgvector:pg16; this is what actually
+  // enables the extension rather than merely having it available.
+  extensions = [vector]
+}
+
+// ─── identity ────────────────────────────────────────────────────────────────
+// Owned by apps/api/src/modules/identity. Expanded in task 1.2 with refresh-token
+// rotation, device sessions, email verification and password reset.
+
+enum Role {
+  LEARNER
+  INSTRUCTOR
+  ADMIN
+}
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  name          String?
+  /// Null for OAuth-only accounts — those are rejected for password login.
+  passwordHash  String?
+  role          Role      @default(LEARNER)
+  emailVerified DateTime?
+  avatarUrl     String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([role])
+}
