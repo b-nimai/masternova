@@ -92,11 +92,7 @@ export class StorageService implements IStorageProvider, OnModuleInit {
     );
   }
 
-  async completeMultipartUpload(
-    key: string,
-    uploadId: string,
-    parts: UploadPart[],
-  ): Promise<void> {
+  async completeMultipartUpload(key: string, uploadId: string, parts: UploadPart[]): Promise<void> {
     await this.internal.send(
       new CompleteMultipartUploadCommand({
         Bucket: this.bucket,

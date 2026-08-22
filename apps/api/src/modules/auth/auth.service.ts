@@ -1,6 +1,6 @@
 import { ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
 import * as argon2 from 'argon2';
-import type { User } from '@prisma/client';
+import type { User } from '@masternova/db';
 import type { LoginInput, PublicUser, RegisterInput } from '@masternova/shared';
 import { UsersService } from '../users/users.service';
 

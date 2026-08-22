@@ -66,9 +66,7 @@ export function AuthForm({
         onClick={onToggleMode}
         className="mt-4 w-full text-center text-sm text-muted-foreground hover:underline"
       >
-        {mode === 'login'
-          ? "Don't have an account? Sign up"
-          : 'Already have an account? Log in'}
+        {mode === 'login' ? "Don't have an account? Sign up" : 'Already have an account? Log in'}
       </button>
     </>
   );

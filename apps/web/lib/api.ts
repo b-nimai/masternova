@@ -1,10 +1,4 @@
-import type {
-  CompleteUploadInput,
-  CreateUploadInput,
-  CreateUploadResult,
-  PublicUser,
-  Video,
-} from '@masternova/shared';
+import type { PublicUser } from '@masternova/shared';
 
 /**
  * Thin fetch wrapper. All requests are same-origin (Next rewrites /api → NestJS),
@@ -43,23 +37,4 @@ export const api = {
     request<PublicUser>('/auth/login', { method: 'POST', body: JSON.stringify(data) }),
   logout: () => request<void>('/auth/logout', { method: 'POST' }),
   me: () => request<PublicUser>('/auth/me'),
-  listVideos: () => request<Video[]>('/videos'),
-  createVideo: (data: { title: string; description?: string }) =>
-    request<Video>('/videos', { method: 'POST', body: JSON.stringify(data) }),
-  deleteVideo: (id: string) => request<void>(`/videos/${id}`, { method: 'DELETE' }),
-
-  // Multipart upload: open a session, then PUT each part straight to S3/MinIO (not via
-  // this client), then report the per-part ETags back to finalize.
-  createUpload: (data: CreateUploadInput) =>
-    request<CreateUploadResult>('/videos/uploads', {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  completeUpload: (videoId: string, data: CompleteUploadInput) =>
-    request<{ status: string }>(`/videos/${videoId}/uploads/complete`, {
-      method: 'POST',
-      body: JSON.stringify(data),
-    }),
-  abortUpload: (videoId: string) =>
-    request<void>(`/videos/${videoId}/uploads/abort`, { method: 'POST' }),
 };

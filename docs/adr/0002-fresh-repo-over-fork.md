@@ -41,7 +41,7 @@ re-establishing scaffolding that a fork would have provided free.
 ## Why the negative is acceptable
 
 The six-month signal was never load-bearing. A reviewer who opens the history sees ten
-commits about a screen recorder, followed by a rename — which reads *worse* than an honest
+commits about a screen recorder, followed by a rename — which reads _worse_ than an honest
 short history of a well-built system, because it invites the question of what the first ten
 commits have to do with the project being discussed.
 
@@ -50,8 +50,8 @@ decision; the history still exists where it belongs.
 
 ## Alternatives rejected
 
-| Option | Why not |
-| --- | --- |
-| Fork Loom, `git mv` into shape | Inherits the defect list silently, and every future `git log` on a file walks back into Loom's domain. |
-| Fresh repo, build everything from scratch | Discards the genuinely non-obvious work — the dual-S3Client MinIO presigning trick and the 114-line parallel multipart uploader especially — for no gain. Roughly a week of re-solving solved problems. |
-| Fork, then `git checkout --orphan` a new root | The worst of both: a repo that *contains* the old history but does not show it, which is confusing rather than clean. |
+| Option                                        | Why not                                                                                                                                                                                                 |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Fork Loom, `git mv` into shape                | Inherits the defect list silently, and every future `git log` on a file walks back into Loom's domain.                                                                                                  |
+| Fresh repo, build everything from scratch     | Discards the genuinely non-obvious work — the dual-S3Client MinIO presigning trick and the 114-line parallel multipart uploader especially — for no gain. Roughly a week of re-solving solved problems. |
+| Fork, then `git checkout --orphan` a new root | The worst of both: a repo that _contains_ the old history but does not show it, which is confusing rather than clean.                                                                                   |

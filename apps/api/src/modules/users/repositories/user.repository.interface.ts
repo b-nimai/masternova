@@ -1,4 +1,4 @@
-import type { User } from '@prisma/client';
+import type { User } from '@masternova/db';
 
 /** Injection token for the user repository abstraction. */
 export const USER_REPOSITORY = Symbol('USER_REPOSITORY');

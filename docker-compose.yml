@@ -100,7 +100,7 @@ services:
     # Phase 0 task 0.5. Loom ran `prisma db push` here because it had no migrations.
     # `db push` outside local dev is banned (CLAUDE.md §4) and it hides drift, so the
     # stack now applies real migrations on boot — the same command CI and prod run.
-    command: sh -c "pnpm prisma migrate deploy && pnpm dev"
+    command: sh -c "pnpm --filter @masternova/db run migrate:deploy && pnpm dev"
     ports:
       - '3001:3001'
     depends_on:
@@ -112,7 +112,7 @@ services:
         condition: service_completed_successfully
     volumes:
       - ./apps/api/src:/app/apps/api/src
-      - ./apps/api/prisma:/app/apps/api/prisma
+      - ./packages/db:/app/packages/db
       - ./packages:/app/packages
 
   worker:

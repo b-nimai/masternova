@@ -7,11 +7,12 @@
 > — without ever double-charging anyone, and without melting under load?"
 
 Three sub-problems fall straight out of that sentence, and they are the whole project:
+
 1. Get the video ready to stream — **ingest + transcode pipeline**
 2. Take the money exactly once — **checkout, idempotency, outbox**
 3. Decide who's allowed to watch — **entitlement engine**
 
-Never open with a feature list. Features are the *consequence*, not the pitch.
+Never open with a feature list. Features are the _consequence_, not the pitch.
 
 ---
 
@@ -29,6 +30,7 @@ SLO-based alerting."
 ## 5-minute version (engineering interview)
 
 ### 0:00 – 0:30 — Frame the problem
+
 "Masternova is an online course platform — the Udemy shape. Learners browse, buy, and stream
 courses; instructors author them and earn a revenue share.
 
@@ -37,6 +39,7 @@ hard backend problems: getting video ready to stream, taking money exactly once,
 who's allowed to watch. Let me walk through the architecture, then those three."
 
 ### 0:30 – 1:15 — Architecture in one breath
+
 "It's a **modular monolith plus a separate worker fleet**, on Postgres, Redis and S3.
 
 The API is NestJS with hard module boundaries — identity, catalog, media, commerce, enrollment,
@@ -48,9 +51,10 @@ I chose a monolith on purpose. At this traffic, microservices would buy me deplo
 and distributed transactions in exchange for nothing. I've written up exactly where I'd split it
 when that stops being true — media first, then commerce."
 
-> This sentence alone signals seniority: you *chose*, you didn't default.
+> This sentence alone signals seniority: you _chose_, you didn't default.
 
 ### 1:15 – 2:00 — Problem 1: the video pipeline
+
 "An instructor uploads a 2 GB file from the browser. That goes **direct to S3 as a presigned
 multipart upload** — it never touches my API — and it's resumable, so a dropped connection
 resumes from the part it left off.
@@ -60,28 +64,30 @@ Completion enqueues a **job DAG in BullMQ**: probe the file, fan out to transcod
 transcript for semantic search.
 
 Every worker is **idempotent** — deterministic output keys and upsert-on-conflict — because jobs
-*will* retry. My test for this is killing a worker mid-transcode with SIGKILL: the job re-runs and
+_will_ retry. My test for this is killing a worker mid-transcode with SIGKILL: the job re-runs and
 you get zero duplicate renditions and no orphaned S3 objects. Anything that exhausts its retries
 lands in a **dead-letter queue** with a replay endpoint."
 
 ### 2:00 – 2:45 — Problem 2: taking money exactly once
+
 "Checkout is an **explicit state machine**: cart → order created → payment pending → paid →
 enrolled, with refund branches that revoke access.
 
 Two things make it safe. First, **idempotency keys** — the client sends one, I store the request
 hash and the response, and a replay returns the stored response instead of charging again.
-Second, the payment webhook is the hard part: it can arrive twice, out of order, or *before* the
+Second, the payment webhook is the hard part: it can arrive twice, out of order, or _before_ the
 user's redirect. So I dedupe on the provider's event ID and the state machine only ever moves
 forward.
 
 Then, to actually enroll the user and send the receipt, I use a **transactional outbox** — the
 order state change and the outbox rows commit in one Postgres transaction, and a relay worker
-publishes them. That gives me exactly-once *effects* without a distributed transaction.
+publishes them. That gives me exactly-once _effects_ without a distributed transaction.
 
 The test I'm proudest of: fire the same webhook 50 times concurrently, and you get exactly one
 enrollment, one invoice, one email."
 
 ### 2:45 – 3:15 — Problem 3: who's allowed to watch
+
 "Authorization here isn't a boolean. 'Can this user play this lecture?' depends on whether they
 purchased it, whether the refund window has passed, whether it's a free preview lecture, whether
 they're the instructor, whether the course is even published.
@@ -96,6 +102,7 @@ shares a manifest URL and your paid content is free. A leaked URL from my system
 minutes."
 
 ### 3:15 – 4:15 — The infrastructure story
+
 "Everything is containerized — multi-stage builds, non-root, and `docker compose up` gives you
 the entire stack locally including Postgres, Redis, MinIO, Typesense and the Grafana stack.
 
@@ -121,6 +128,7 @@ alerts** — 99.9% availability, p95 under 300 ms, video start under two seconds
 wired to a runbook."
 
 ### 4:15 – 5:00 — Numbers, tradeoffs, and the close
+
 "I load-tested it with k6 at 1,000 concurrent learners and it held p95 under 300 ms. [Insert your
 real tuning story here — e.g. 'the course listing was 400 ms until I found a sequential scan;
 the right composite index took it to 40.']
@@ -141,15 +149,15 @@ or the authorization layer."
 
 ## Bait these follow-ups (you want to be asked)
 
-| If they ask… | You have… |
-| --- | --- |
-| "Why not microservices?" | the ADR + the 10x split plan, in order, with breaking points named |
-| "What if the webhook fires twice?" | dedupe + state machine + outbox + the 50-replay test |
-| "How do you stop someone sharing the video URL?" | three-layer enforcement, 5-minute signed cookies |
-| "How do you scale the workers?" | queue depth, not CPU + spot + graceful drain + scale-to-zero |
-| "What breaks first at 10x?" | entitlement cache invalidation fan-out, and ledger contention |
-| "How do you deploy without downtime?" | expand-contract migrations + blue/green + auto-rollback |
-| "How do you know it's healthy?" | SLOs, error budgets, burn-rate alerts, runbook per alert |
+| If they ask…                                     | You have…                                                          |
+| ------------------------------------------------ | ------------------------------------------------------------------ |
+| "Why not microservices?"                         | the ADR + the 10x split plan, in order, with breaking points named |
+| "What if the webhook fires twice?"               | dedupe + state machine + outbox + the 50-replay test               |
+| "How do you stop someone sharing the video URL?" | three-layer enforcement, 5-minute signed cookies                   |
+| "How do you scale the workers?"                  | queue depth, not CPU + spot + graceful drain + scale-to-zero       |
+| "What breaks first at 10x?"                      | entitlement cache invalidation fan-out, and ledger contention      |
+| "How do you deploy without downtime?"            | expand-contract migrations + blue/green + auto-rollback            |
+| "How do you know it's healthy?"                  | SLOs, error budgets, burn-rate alerts, runbook per alert           |
 
 ## Never say
 

@@ -7,10 +7,7 @@ import { AppModule } from './app.module';
 import { appConfig, sessionConfig } from './config/configuration';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestFastifyApplication>(
-    AppModule,
-    new FastifyAdapter(),
-  );
+  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter());
 
   const session = app.get<ConfigType<typeof sessionConfig>>(sessionConfig.KEY);
   const { port, isProduction } = app.get<ConfigType<typeof appConfig>>(appConfig.KEY);
@@ -36,7 +33,6 @@ async function bootstrap() {
   app.setGlobalPrefix('api');
 
   await app.listen({ port, host: '0.0.0.0' });
-  // eslint-disable-next-line no-console
   console.log(`[api] listening on http://localhost:${port}/api`);
 }
 

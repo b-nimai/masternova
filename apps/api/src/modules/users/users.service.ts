@@ -1,5 +1,5 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { User } from '@prisma/client';
+import type { User } from '@masternova/db';
 import {
   USER_REPOSITORY,
   type CreateUserData,
@@ -8,9 +8,7 @@ import {
 
 @Injectable()
 export class UsersService {
-  constructor(
-    @Inject(USER_REPOSITORY) private readonly users: IUserRepository,
-  ) {}
+  constructor(@Inject(USER_REPOSITORY) private readonly users: IUserRepository) {}
 
   create(data: CreateUserData): Promise<User> {
     return this.users.create(data);

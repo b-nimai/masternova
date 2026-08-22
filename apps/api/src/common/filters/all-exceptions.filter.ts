@@ -35,7 +35,10 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const body = isHttp ? exception.getResponse() : undefined;
 
     if (!isHttp) {
-      this.logger.error('Unhandled exception', exception instanceof Error ? exception.stack : String(exception));
+      this.logger.error(
+        'Unhandled exception',
+        exception instanceof Error ? exception.stack : String(exception),
+      );
     }
 
     const envelope: ErrorEnvelope = {

@@ -1,12 +1,6 @@
 import type { Control, FieldPath, FieldValues } from 'react-hook-form';
 import { Input } from '@/components/ui/input';
-import {
-  FormControl,
-  FormField,
-  FormItem,
-  FormLabel,
-  FormMessage,
-} from '@/components/ui/form';
+import { FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
 
 interface TextFieldProps<T extends FieldValues> {
   control: Control<T>;

@@ -13,8 +13,8 @@ WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile=false
 
-WORKDIR /app/apps/api
-RUN pnpm db:generate
+# The schema lives in packages/db, which owns persistence for both apps.
+RUN pnpm --filter @masternova/db run generate
 
 EXPOSE 3001
 CMD ["pnpm", "dev"]

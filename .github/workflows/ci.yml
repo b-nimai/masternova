@@ -14,7 +14,7 @@ concurrency:
   cancel-in-progress: true
 
 env:
-  NODE_VERSION: '22'
+  NODE_VERSION: '24'
 
 jobs:
   static:
@@ -47,7 +47,7 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter "./packages/**" build
-      - run: pnpm --filter @masternova/api db:generate
+      - run: pnpm --filter @masternova/db run generate
       - run: pnpm -r test:unit
 
   integration:
@@ -62,6 +62,6 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm --filter "./packages/**" build
-      - run: pnpm --filter @masternova/api db:generate
+      - run: pnpm --filter @masternova/db run generate
       # Testcontainers uses the Docker daemon that ubuntu-latest already provides.
       - run: pnpm --filter @masternova/api test:int

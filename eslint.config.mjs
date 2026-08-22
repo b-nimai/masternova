@@ -20,8 +20,38 @@ export default tseslint.config(
         'error',
         { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
-      // A domain exception or an HttpException carries a status and an envelope;
-      // a bare Error on a request path does not (CLAUDE.md §4).
+    },
+  },
+
+  // CommonJS tooling files (jest configs) — `module` is a legitimate global there.
+  {
+    files: ['**/*.config.js', '**/jest.*.config.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: { module: 'writable', require: 'readonly', __dirname: 'readonly' },
+    },
+  },
+
+  // Config files legitimately require() plugins (e.g. tailwindcss-animate).
+  {
+    files: ['**/*.config.ts', '**/*.config.mjs', '**/*.config.js'],
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
+  },
+
+  /* A domain exception or an HttpException carries a status code and lands in the
+   * AllExceptionsFilter envelope; a bare Error does not (CLAUDE.md §4).
+   *
+   * Scoped to REQUEST-PATH code only. Boot-time code (src/config/** validating env,
+   * src/main.ts) has no request to answer and no filter mounted yet, so a bare Error
+   * is the correct thing to throw there — and apps/web has no request path at all.
+   * The first version of this rule fired on all three, which is how the scope got
+   * pinned down: a lint rule that cries wolf gets disabled, which is worse than not
+   * having it.
+   */
+  {
+    files: ['apps/api/src/**/*.ts', 'apps/worker/src/**/*.ts'],
+    ignores: ['apps/*/src/config/**', 'apps/*/src/main.ts'],
+    rules: {
       'no-restricted-syntax': [
         'error',
         {

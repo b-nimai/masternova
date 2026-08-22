@@ -9,7 +9,7 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import type { FastifyReply, FastifyRequest } from 'fastify';
-import type { User } from '@prisma/client';
+import type { User } from '@masternova/db';
 import { registerSchema, type PublicUser, type RegisterInput } from '@masternova/shared';
 import { ZodBody } from '../../common/pipes/zod-body.decorator';
 import { AuthenticatedGuard } from '../../common/guards/authenticated.guard';

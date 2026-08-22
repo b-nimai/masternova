@@ -10,5 +10,8 @@ WORKDIR /app
 COPY . .
 RUN pnpm install --frozen-lockfile=false
 
+# The worker persists job results, so it needs the generated client too.
+RUN pnpm --filter @masternova/db run generate
+
 WORKDIR /app/apps/worker
 CMD ["pnpm", "dev"]

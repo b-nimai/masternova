@@ -1,6 +1,6 @@
 packages:
-  - "apps/*"
-  - "packages/*"
+  - 'apps/*'
+  - 'packages/*'
 
 # pnpm 10+ blocks dependency build scripts by default, which makes a non-interactive
 # `pnpm install` (e.g. in Docker) exit 1 (ERR_PNPM_IGNORED_BUILDS). Our deps genuinely
@@ -8,3 +8,13 @@ packages:
 # we restore the pre-pnpm-10 behaviour of running them. This is the documented setting;
 # the `onlyBuiltDependencies` allowlist was unreliable on this pnpm line.
 dangerouslyAllowAllBuilds: true
+
+# @nestjs/platform-fastify resolves fastify 5.11.3 while apps/api resolves 5.12.1. Two
+# copies means two structurally-identical-but-DISTINCT FastifyInstance types, so
+# @fastify/secure-session's `declare module 'fastify'` augmentation lands on one copy while
+# app.register() typechecks against the other — TS2345 with "missing properties" naming
+# types that are plainly present. Deduping to one copy is the fix; this is a type-identity
+# problem, not a version-compatibility one.
+# (pnpm 11 reads overrides from here, no longer from package.json's "pnpm" field.)
+overrides:
+  fastify: 5.12.1

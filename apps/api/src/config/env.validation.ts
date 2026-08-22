@@ -23,10 +23,7 @@ const envSchema = z.object({
   // Google OAuth is opt-in: only wired when both id and secret are present.
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),
-  GOOGLE_CALLBACK_URL: z
-    .string()
-    .url()
-    .default('http://localhost:3000/api/auth/google/callback'),
+  GOOGLE_CALLBACK_URL: z.string().url().default('http://localhost:3000/api/auth/google/callback'),
 });
 
 export type Env = z.infer<typeof envSchema>;

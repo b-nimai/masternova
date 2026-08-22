@@ -10,7 +10,7 @@ resource profiles: HTTP request handling is IO-bound and steady, while ffmpeg tr
 CPU-bound and bursty.
 
 The obvious-looking move for a portfolio project is microservices, because it signals
-"distributed systems." The question is whether it signals *judgement*.
+"distributed systems." The question is whether it signals _judgement_.
 
 ## Decision
 
@@ -25,13 +25,13 @@ Boundaries are enforced mechanically, not by convention:
 - Cross-context effects that can fail independently go through **domain events + the
   transactional outbox**, not direct service calls.
 
-The worker is a separate deployable *because of the resource profile*, not because of the
+The worker is a separate deployable _because of the resource profile_, not because of the
 domain — it scales on queue depth while the API scales on RPS.
 
 ## Consequences
 
 **Positive.** One transaction spans what needs to be atomic — the order state change and its
-outbox rows commit together, so exactly-once *effects* need no distributed transaction. One
+outbox rows commit together, so exactly-once _effects_ need no distributed transaction. One
 deploy, one migration path, one trace without network hops. Refactoring a boundary is a
 file move rather than an API version negotiation.
 
@@ -44,11 +44,11 @@ that are enforced from commit one do not rot.
 
 ## Alternatives rejected
 
-| Option | Why not |
-| --- | --- |
-| Microservices from day one | Buys deployment complexity and distributed transactions in exchange for nothing at this traffic. The checkout→enroll→invoice→email path would become a saga to solve a problem a single Postgres transaction already solves. |
-| Single deployable, no module boundaries | The thing every CRUD portfolio project already is. No seam to point at, and the boundaries are exactly what makes the design explainable. |
-| Serverless functions per endpoint | Cold starts on a video-start path with a 2 s p95 SLO; and ffmpeg does not fit the execution model. |
+| Option                                  | Why not                                                                                                                                                                                                                      |
+| --------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Microservices from day one              | Buys deployment complexity and distributed transactions in exchange for nothing at this traffic. The checkout→enroll→invoice→email path would become a saga to solve a problem a single Postgres transaction already solves. |
+| Single deployable, no module boundaries | The thing every CRUD portfolio project already is. No seam to point at, and the boundaries are exactly what makes the design explainable.                                                                                    |
+| Serverless functions per endpoint       | Cold starts on a video-start path with a 2 s p95 SLO; and ffmpeg does not fit the execution model.                                                                                                                           |
 
 ## The 10x answer
 
