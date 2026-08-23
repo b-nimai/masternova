@@ -35,10 +35,27 @@ export class JwtAuthGuard implements CanActivate {
       context.getHandler(),
       context.getClass(),
     ]);
-    if (isPublic) return true;
-
     const request = context.switchToHttp().getRequest<FastifyRequest>();
     const token = extractToken(request);
+
+    /*
+     * A public route still identifies the caller when it can.
+     *
+     * The catalog is the reason: `GET /courses` is open to anonymous visitors, but a
+     * signed-in instructor browsing it must see their own drafts, and the entitlement
+     * engine (task 1.8) will want the same for free-preview lectures. Returning `true`
+     * before touching the token — which is what this guard used to do — left
+     * `request.userId` unset on exactly those routes, and the visibility rule silently
+     * treated every logged-in user as a stranger.
+     *
+     * Failure is still not an error here: an expired cookie on a public page means
+     * "anonymous", not 401.
+     */
+    if (isPublic) {
+      if (token) this.identify(request, token);
+      return true;
+    }
+
     if (!token) throw new UnauthorizedException('Not authenticated');
 
     try {
@@ -49,6 +66,18 @@ export class JwtAuthGuard implements CanActivate {
       return true;
     } catch {
       throw new UnauthorizedException('Invalid or expired access token');
+    }
+  }
+
+  /** Best-effort. Used only on public routes, where an unreadable token means anonymous. */
+  private identify(request: FastifyRequest, token: string): void {
+    try {
+      const claims = this.tokens.verifyAccessToken(token);
+      request.userId = claims.sub;
+      request.userRole = claims.role;
+      request.sessionId = claims.sid;
+    } catch {
+      // Anonymous.
     }
   }
 }

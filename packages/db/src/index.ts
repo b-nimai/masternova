@@ -33,4 +33,12 @@ export type {
   SuppressionReason,
   NotificationCategory,
   NotificationPreference,
+  Course,
+  CourseStatus,
+  CourseLevel,
+  Currency,
+  Section,
+  Lecture,
+  LectureKind,
+  Category,
 } from '@prisma/client';

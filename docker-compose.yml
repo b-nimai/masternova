@@ -101,7 +101,16 @@ services:
     # Phase 0 task 0.5. Loom ran `prisma db push` here because it had no migrations.
     # `db push` outside local dev is banned (CLAUDE.md §4) and it hides drift, so the
     # stack now applies real migrations on boot — the same command CI and prod run.
-    command: sh -c "pnpm --filter @masternova/db run migrate:deploy && pnpm dev"
+    # Three steps before `pnpm dev`, each for a failure that actually happened:
+    #   generate — the image bakes a Prisma client at build time, but ./packages is
+    #     volume-mounted, so a schema change on the host leaves the container holding a
+    #     client that has never heard of the new models.
+    #   build    — `pnpm dev` starts the packages' `tsup --watch` and the apps' `nest
+    #     --watch` in parallel, and tsup clears dist/ before its first emit. The apps then
+    #     compile against packages that have no .d.ts yet, and tsc never re-resolves them.
+    #     Building once first means dist/ exists before anything looks for it.
+    #   migrate  — the same command CI and production run. `db push` is banned (§4).
+    command: sh -c "pnpm --filter @masternova/db run generate && pnpm --filter './packages/**' build && pnpm --filter @masternova/db run migrate:deploy && pnpm dev"
     ports:
       - '3001:3001'
     depends_on:
@@ -135,6 +144,9 @@ services:
       WEB_URL: http://localhost:3000
       API_PUBLIC_URL: http://localhost:3001
       UNSUBSCRIBE_SECRET: dev-unsubscribe-secret-change-me-32-chars
+    # Same two reasons as the api service. The worker does not apply migrations — the api
+    # owns that, so there is exactly one writer to the migration history.
+    command: sh -c "pnpm --filter @masternova/db run generate && pnpm --filter './packages/**' build && pnpm dev"
     depends_on:
       redis:
         condition: service_healthy

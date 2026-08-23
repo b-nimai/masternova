@@ -20,6 +20,7 @@ import { IdentityModule } from './modules/identity/identity.module';
 import { JwtAuthGuard } from './modules/identity/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/identity/guards/roles.guard';
 import { NotificationModule } from './modules/notification/notification.module';
+import { CatalogModule } from './modules/catalog/catalog.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { NotificationModule } from './modules/notification/notification.module';
     OutboxModule,
     IdentityModule,
     NotificationModule,
+    CatalogModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
