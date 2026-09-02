@@ -34,6 +34,11 @@ export interface CourseDetailsPatch {
   readonly promoVideoAssetId?: string | null;
 }
 
+/** Either the bump happened, or it did not and here is why. */
+export type VersionClaim =
+  | { readonly claimed: true; readonly version: number }
+  | { readonly claimed: false; readonly currentVersion: number };
+
 export interface CoursePricing {
   readonly priceMinor: number;
   readonly listPriceMinor: number | null;
@@ -74,8 +79,37 @@ export interface NewSection {
  */
 export interface ICourseWriter {
   create(data: NewCourse, executor?: unknown): Promise<Course>;
+  /**
+   * Optimistic concurrency, and the row lock, in one statement.
+   *
+   * `UPDATE ... SET version = version + 1 WHERE id = ? AND version = ?` returns the number
+   * of rows it touched, and zero means somebody else got there first. Doing it as the FIRST
+   * write of the transaction also takes the course row's lock, so two autosaves that both
+   * pass the check cannot then interleave their curriculum writes — the second blocks until
+   * the first commits, and then fails the check it already passed. A read-then-compare would
+   * have neither property.
+   *
+   * Reports the version it actually found on a miss, so the caller can tell the client how
+   * far behind it is without a second query and a second chance to race.
+   */
+  claimVersion(id: string, expectedVersion: number, executor?: unknown): Promise<VersionClaim>;
+  /** The same lock and bump with no precondition — for undo, which has no version to echo. */
+  bumpVersion(id: string, executor?: unknown): Promise<number>;
   updateDetails(id: string, data: CourseDetailsPatch, executor?: unknown): Promise<Course>;
   updatePricing(id: string, data: CoursePricing, executor?: unknown): Promise<Course>;
-  setStatus(id: string, status: CourseStatus, executor?: unknown): Promise<Course>;
+  /**
+   * Conditional on the state the caller validated against.
+   *
+   * `expectedFrom` is not ceremony: the edge was checked against a row read outside the
+   * transaction, so an archive and a publish can both be legal from what each of them saw.
+   * Applying unconditionally lets the later one win, and "ARCHIVED is terminal" becomes a
+   * comment rather than a guarantee. Returns `null` when the row has moved on.
+   */
+  setStatus(
+    id: string,
+    status: CourseStatus,
+    expectedFrom: CourseStatus,
+    executor?: unknown,
+  ): Promise<Course | null>;
   insertSections(courseId: string, sections: NewSection[], executor?: unknown): Promise<void>;
 }

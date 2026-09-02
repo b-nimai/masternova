@@ -24,6 +24,7 @@ import {
   resetCatalog,
   seedCourseWithStructure,
   seedCourses,
+  seedPublishableCourse,
 } from './factories/catalog.factory';
 
 /**
@@ -103,14 +104,16 @@ describe('catalog (real Postgres)', () => {
 
     it('publishes, and leaves the event the search indexer will consume', async () => {
       const instructor = await signIn();
-      const course = await seedCourseWithStructure(prisma, {
-        instructorId: instructor.id,
-        sections: 1,
-        lecturesPerSection: 1,
-      });
+      const reviewer = await signIn('ADMIN');
+      const course = await seedPublishableCourse(prisma, instructor.id);
 
-      const published = await request('POST', `/instructor/courses/${course.id}/publish`, {
+      // Two actors, because the state machine reserves approval for a reviewer — see
+      // `catalog-authoring.int-spec.ts` for the lifecycle in full.
+      await request('POST', `/instructor/courses/${course.id}/submit`, {
         cookies: instructor.cookies,
+      });
+      const published = await request('POST', `/instructor/courses/${course.id}/publish`, {
+        cookies: reviewer.cookies,
       });
       expect(published.statusCode).toBe(200);
 
@@ -137,7 +140,7 @@ describe('catalog (real Postgres)', () => {
       });
 
       await request('PATCH', `/instructor/courses/${course.id}/pricing`, {
-        payload: { priceMinor: 99900, listPriceMinor: 149900 },
+        payload: { priceMinor: 99900, listPriceMinor: 149900, expectedVersion: course.version },
         cookies: instructor.cookies,
       });
 
@@ -147,7 +150,7 @@ describe('catalog (real Postgres)', () => {
       expect(event.payload).toMatchObject({ priceMinor: 99900, previousPriceMinor: 49900 });
     });
 
-    /** Archiving is terminal — the one state rule task 1.4 owns; the rest is task 1.5's. */
+    /** Archiving is terminal. The rest of the state machine lives in the authoring suite. */
     it('refuses to publish an archived course', async () => {
       const instructor = await signIn();
       const [course] = await seedCourses(prisma, 1, { instructorId: instructor.id });
@@ -165,26 +168,43 @@ describe('catalog (real Postgres)', () => {
     /** `publishedAt` is the catalog's sort key; a republished course must not jump the queue. */
     it('stamps publishedAt on the first publish and never moves it', async () => {
       const instructor = await signIn();
-      const [course] = await seedCourses(prisma, 1, {
-        instructorId: instructor.id,
-        status: 'DRAFT',
-        publishedAt: null,
-      });
+      const reviewer = await signIn('ADMIN');
+      const course = await seedPublishableCourse(prisma, instructor.id);
 
-      await request('POST', `/instructor/courses/${course.id}/publish`, {
-        cookies: instructor.cookies,
-      });
-      const first = await prisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      const publish = async () => {
+        await request('POST', `/instructor/courses/${course.id}/submit`, {
+          cookies: instructor.cookies,
+        });
+        await request('POST', `/instructor/courses/${course.id}/publish`, {
+          cookies: reviewer.cookies,
+        });
+        return prisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      };
 
+      const first = await publish();
       await request('POST', `/instructor/courses/${course.id}/unpublish`, {
         cookies: instructor.cookies,
       });
-      await request('POST', `/instructor/courses/${course.id}/publish`, {
-        cookies: instructor.cookies,
-      });
-      const second = await prisma.course.findUniqueOrThrow({ where: { id: course.id } });
+      const second = await publish();
 
       expect(second.publishedAt).toEqual(first.publishedAt);
+    });
+
+    /**
+     * `priceMinor` is an INT4, and `Number.MAX_SAFE_INTEGER` as the open end of a one-sided
+     * range does not fit in one — so `?minPrice=…` with no `maxPrice` was a 500 before the
+     * query ever reached Postgres.
+     */
+    it('serves a one-sided price filter', async () => {
+      await seedCourses(prisma, 3, (index) => ({ priceMinor: index * 50_000 }));
+
+      const above = await request('GET', '/courses?minPrice=40000');
+      const below = await request('GET', '/courses?maxPrice=40000');
+
+      expect(above.statusCode).toBe(200);
+      expect(below.statusCode).toBe(200);
+      expect(idsOf(above.body)).toHaveLength(2);
+      expect(idsOf(below.body)).toHaveLength(1);
     });
 
     it('gives two courses with the same title distinct slugs', async () => {

@@ -141,7 +141,62 @@ taking the bounces we do care about with it.
 
 ---
 
-## 4. The shape all of these share
+## 4. Authoring: draft → reviewed → published
+
+The one flow in the product with a **human in the middle**, and the one where the same
+request is made twice from two different tabs.
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant I as Instructor (web)
+  participant API as API · catalog
+  participant DB as Postgres
+  participant W as Worker · outbox relay
+  participant S as Search index (1.13)
+  participant M as Mail (1.3)
+
+  I->>API: POST /curriculum {expectedVersion, command}
+  API->>DB: BEGIN · claim version (UPDATE … WHERE version = ?)
+  Note over API,DB: 0 rows ⇒ 409. The same statement takes the row lock.
+  API->>DB: apply command · refresh rollups
+  API->>DB: INSERT CourseEdit {command, inverse} · INSERT outbox curriculum-changed
+  API->>DB: COMMIT
+  API-->>I: 200 {version+1, sections}
+
+  I->>API: POST /submit
+  API->>API: publish gate over course + curriculum
+  API->>DB: status = IN_REVIEW · outbox catalog.course.submitted
+  API-->>I: 200
+
+  Note over API: a reviewer looks at it — the only human step in the system
+
+  participant R as Reviewer (ADMIN)
+  R->>API: POST /publish
+  API->>API: publish gate re-runs (it may have been edited while queued)
+  API->>DB: status = PUBLISHED · publishedAt stamped once · outbox catalog.course.published
+  API->>DB: COMMIT
+  W->>DB: claim pending outbox rows
+  W->>S: index the course
+  W->>M: "your course is live" to the instructor
+```
+
+**What is worth noticing.**
+
+- **The gate runs twice** — on submission and again on approval. A course can be edited
+  while it sits in the queue, so approving what a reviewer saw is not the same as publishing
+  what it became.
+- **`catalog.course.curriculum-changed` is one event for nine kinds of edit.** The search
+  indexer needs exactly one message meaning "reindex this"; a per-edit vocabulary would make
+  adding an edit type a cross-context change.
+- **The version claim is the first statement and it is also the lock**, which is what makes
+  two tabs a 409 instead of a lost update. [ADR-0016](../adr/0016-optimistic-concurrency-for-authoring.md).
+- **Nothing downstream is awaited.** Indexing and the email are owed, not part of the
+  request — same shape as every other flow here.
+
+---
+
+## 5. The shape all of these share
 
 1. **State and its consequences commit together**, or neither does.
 2. **The request returns as soon as the state is durable.** Consequences are owed, not awaited.

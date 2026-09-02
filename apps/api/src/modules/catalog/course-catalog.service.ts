@@ -32,6 +32,9 @@ import {
 } from './specifications/course-specifications';
 import { after, decodeCursor } from './cursor';
 
+/** The ceiling of the `priceMinor` column's type. ₹21 crore in paise; not a real price. */
+const MAX_INT4 = 2_147_483_647;
+
 /**
  * The read side of the catalog: turn a query string into a specification, page it, map it.
  *
@@ -85,7 +88,10 @@ export class CourseCatalogService {
     if (query.free) specs.push(isFree());
 
     if (query.minPrice !== undefined || query.maxPrice !== undefined) {
-      specs.push(priceBetween(query.minPrice ?? 0, query.maxPrice ?? Number.MAX_SAFE_INTEGER));
+      // `MAX_INT4`, not `Number.MAX_SAFE_INTEGER`. `priceMinor` is an INT4, and Prisma
+      // refuses to fit 9007199254740991 into it — so a one-sided filter like
+      // `?minPrice=10000` was a 500 before the query ever reached Postgres.
+      specs.push(priceBetween(query.minPrice ?? 0, query.maxPrice ?? MAX_INT4));
     }
 
     if (query.category) {

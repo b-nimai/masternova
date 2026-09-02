@@ -12,6 +12,15 @@ interface ErrorEnvelope {
   statusCode: number;
   error: string;
   message: unknown;
+  /**
+   * Machine-readable specifics, when an error has any. Present only if the exception put
+   * them there.
+   *
+   * The force: the publish gate rejects with a *list* of coded problems, and flattening
+   * that into one English sentence makes the client parse prose to know which wizard step
+   * to open. `message` stays the human sentence; `details` carries the codes.
+   */
+  details?: unknown;
   timestamp: string;
   path: string;
 }
@@ -52,6 +61,9 @@ export class AllExceptionsFilter implements ExceptionFilter {
           : (body ?? 'Internal server error'),
       timestamp: new Date().toISOString(),
       path: request.url,
+      ...(typeof body === 'object' && body !== null && 'details' in body
+        ? { details: (body as { details: unknown }).details }
+        : {}),
     };
 
     void reply.status(status).send(envelope);

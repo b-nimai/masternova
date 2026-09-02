@@ -12,6 +12,7 @@ import type {
   ICourseWriter,
   NewCourse,
   NewSection,
+  VersionClaim,
 } from './course.writer.interface';
 import type { CourseAggregate } from '../prototype/course-prototype';
 
@@ -219,29 +220,78 @@ export class PrismaCourseRepository implements ICourseReader, ICourseWriter {
     return this.client(executor).course.update({ where: { id }, data });
   }
 
+  /** `priceSetAt` is stamped here and never cleared — see the column comment on `Course`. */
   updatePricing(id: string, data: CoursePricing, executor?: unknown): Promise<Course> {
-    return this.client(executor).course.update({ where: { id }, data });
+    return this.client(executor).course.update({
+      where: { id },
+      data: { ...data, priceSetAt: new Date() },
+    });
+  }
+
+  async claimVersion(
+    id: string,
+    expectedVersion: number,
+    executor?: unknown,
+  ): Promise<VersionClaim> {
+    const db = this.client(executor);
+    const claimed = await db.course.updateMany({
+      where: { id, version: expectedVersion },
+      data: { version: { increment: 1 } },
+    });
+    if (claimed.count === 1) return { claimed: true, version: expectedVersion + 1 };
+
+    const row = await db.course.findUnique({ where: { id }, select: { version: true } });
+    return { claimed: false, currentVersion: row?.version ?? expectedVersion };
+  }
+
+  async bumpVersion(id: string, executor?: unknown): Promise<number> {
+    const row = await this.client(executor).course.update({
+      where: { id },
+      data: { version: { increment: 1 } },
+      select: { version: true },
+    });
+    return row.version;
   }
 
   /**
    * `publishedAt` is set on the first publish and never moved again — it is the catalog's
    * sort key, and a republished course jumping to the top of "newest" is a bug, not a
    * feature.
+   *
+   * A transition **bumps the version** even though it does not claim one. A status change
+   * is a change every open tab needs to know about: without the bump, an editor holding a
+   * version from before an archive would pass its claim and write content to a course that
+   * is now read-only. With it, that write is a 409 — which is the honest answer, because
+   * the client's copy really is stale.
    */
-  async setStatus(id: string, status: CourseStatus, executor?: unknown): Promise<Course> {
+  async setStatus(
+    id: string,
+    status: CourseStatus,
+    expectedFrom: CourseStatus,
+    executor?: unknown,
+  ): Promise<Course | null> {
     const db = this.client(executor);
-    if (status !== 'PUBLISHED') {
-      return db.course.update({ where: { id }, data: { status } });
+
+    // `updateMany` rather than `update`, because only the `-Many` variants accept a
+    // predicate beyond the primary key — and the predicate is the whole point. It is also
+    // the statement that takes the row lock, so it goes first.
+    const moved = await db.course.updateMany({
+      where: { id, status: expectedFrom },
+      data: { status, version: { increment: 1 } },
+    });
+    if (moved.count === 0) return null;
+
+    if (status === 'PUBLISHED') {
+      // Separate statement because the stamp is conditional and SQL has no "set if null" in
+      // an UPDATE Prisma can express. `publishedAt: null` in the predicate touches zero rows
+      // on a republish, which is precisely the wanted behaviour.
+      await db.course.updateMany({
+        where: { id, publishedAt: null },
+        data: { publishedAt: new Date() },
+      });
     }
 
-    // Two statements because the stamp is conditional and SQL has no "set if null" in an
-    // UPDATE Prisma can express. `updateMany` with `publishedAt: null` in the predicate
-    // touches zero rows on a republish, which is precisely the wanted behaviour.
-    await db.course.updateMany({
-      where: { id, publishedAt: null },
-      data: { publishedAt: new Date() },
-    });
-    return db.course.update({ where: { id }, data: { status } });
+    return db.course.findUniqueOrThrow({ where: { id } });
   }
 
   async insertSections(

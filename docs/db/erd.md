@@ -17,6 +17,7 @@ erDiagram
     Category ||--o{ Category : "parent of"
     Category ||--o{ Course : "classifies"
     Course ||--o{ Section : "contains"
+    Course ||--o{ CourseEdit : "undo stack"
     Section ||--o{ Lecture : "contains"
 
     User {
@@ -96,7 +97,17 @@ erDiagram
         string instructorId FK
         string categoryId FK
         decimal ratingAverage "denormalised, written by engagement"
-        int version "optimistic concurrency, task 1.5"
+        datetime priceSetAt "free vs not-yet-priced"
+        int version "optimistic concurrency, claimed conditionally"
+    }
+    CourseEdit {
+        string id PK
+        string courseId FK
+        string kind "the Command's discriminator"
+        json command "as received"
+        json inverse "computed before it was applied"
+        int version "the version this edit produced — the stack order"
+        datetime undoneAt "null while undoable"
     }
     Section {
         string id PK
@@ -160,6 +171,16 @@ whatever produced it, and a suppression is a fact about an address rather than a
   page is a join and a sort no index can rescue. Task 1.14 owes the reconciliation job.
 - `Lecture.assetId` is a plain string, not a relation: media owns that lifecycle, and a
   duplicated course deliberately **shares** the value rather than copying gigabytes.
+- `Course.version` is bumped by **every content write** and claimed conditionally
+  (`WHERE id = ? AND version = ?`), as the first statement of the transaction — so the same
+  statement both validates optimistic concurrency and takes the row lock. See
+  [`lld/wizard-draft-state.md`](../lld/wizard-draft-state.md).
+- `Course.priceSetAt` exists because `priceMinor = 0` is ambiguous: it is both "this course
+  is free" and "nobody has priced it yet", and the publish gate has to tell them apart.
+- `CourseEdit` stores each curriculum command **and its inverse**, because the inverse of a
+  removal is the content that was removed and that only exists before the delete runs. It is
+  a table rather than an in-memory stack because the API is more than one task, and the tab
+  that made an edit is not guaranteed to reach the same process when it presses undo.
 
 ## Indexes
 

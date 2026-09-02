@@ -2,11 +2,12 @@ import { Inject, Injectable } from '@nestjs/common';
 import type { Course } from '@masternova/db';
 import { UNIT_OF_WORK, type UnitOfWork } from '@masternova/contracts';
 import { slugify } from '../../common/utils/slug';
-import { CourseNotFoundException, NotCourseOwnerException } from '../../common/exceptions';
+import { CourseNotFoundException } from '../../common/exceptions';
 import { COURSE_READER, type ICourseReader } from './repositories/course.reader.interface';
 import { COURSE_WRITER, type ICourseWriter } from './repositories/course.writer.interface';
 import { cloneCourse } from './prototype/course-prototype';
-import type { Actor } from './course-editing.service';
+import { CourseAccessService } from './course-access.service';
+import type { Actor } from './actor';
 
 /**
  * "Duplicate this course" — the Prototype, wired up.
@@ -28,15 +29,17 @@ export class CourseDuplicationService {
   constructor(
     @Inject(COURSE_READER) private readonly reader: ICourseReader,
     @Inject(COURSE_WRITER) private readonly writer: ICourseWriter,
+    private readonly access: CourseAccessService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
   ) {}
 
   async duplicate(sourceId: string, actor: Actor): Promise<Course> {
+    // Ownership through the shared check, then the deep read. An archived course is still
+    // duplicable on purpose: a copy is a fresh DRAFT, and that is the only supported way to
+    // bring an archived course's content back — see `COURSE_LIFECYCLE`.
+    await this.access.assertOwned(sourceId, actor);
     const source = await this.reader.findDeepById(sourceId);
     if (!source) throw new CourseNotFoundException();
-    if (actor.role !== 'ADMIN' && source.instructorId !== actor.id) {
-      throw new NotCourseOwnerException();
-    }
 
     // An admin duplicating on someone's behalf leaves the copy with the original owner;
     // anything else would silently move a course between instructors' dashboards.

@@ -52,8 +52,26 @@ export class IdempotencyInterceptor implements NestInterceptor {
     }
 
     const scope = request.userId ?? `anon:${hash(request.ip ?? 'unknown')}`;
+    // The route *pattern* (`/instructor/courses/:id/duplicate`), for a readable log.
     const endpoint = `${request.method} ${request.routeOptions?.url ?? request.url}`;
-    const requestHash = hash(JSON.stringify(request.body ?? null));
+
+    /**
+     * The hash covers **the target as well as the body**, and the target has to be the
+     * concrete path rather than the pattern.
+     *
+     * Several idempotent routes here identify their resource purely by a path param and
+     * send no body at all — `POST /courses/:id/duplicate`, `POST /courses/:id/curriculum/undo`.
+     * Hashing the body alone makes every one of them hash `"null"`, so one key reused across
+     * two courses would hand back the *first* course's stored response and never touch the
+     * second. A client that mints one key per page load rather than per click hits that
+     * immediately, and it fails silently with a 200.
+     */
+    const requestHash = hash(
+      JSON.stringify({
+        target: `${request.method} ${request.url}`,
+        body: request.body ?? null,
+      }),
+    );
 
     return from(this.claim({ scope, key, endpoint, requestHash })).pipe(
       switchMap((replay) =>

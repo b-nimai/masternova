@@ -466,6 +466,23 @@ behaviour, in a form Prisma can declare.
 
 ---
 
+## 7.5 Indexes added by task 1.5, and why they carry no EXPLAIN
+
+Two of the three are **constraints, not performance work**, and the third serves a query
+that cannot be slow by construction. Measuring them against the 10k seed would produce
+numbers that prove nothing, and a fabricated before/after is worse than an honest absence.
+
+| Index                                       | What it is for                                                                                                                                                                                                                                                                                         |
+| ------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `Section(courseId, position)` **unique**    | The ordering invariant, already present since 1.4. It is why a reorder has to park rows on negative positions before settling them — Postgres checks it per statement and Prisma cannot declare DEFERRABLE.                                                                                            |
+| `Lecture(sectionId, position)` **unique**   | The same, one level down.                                                                                                                                                                                                                                                                              |
+| `CourseEdit(courseId, undoneAt, version ⌄)` | The only query against the table: the top of one course's undo stack. Bounded by the edits made to a single course, and read one row at a time with `LIMIT 1` — a table scan here would never be the bottleneck, and the index exists so it stays that way as a long-lived course accumulates history. |
+
+`CourseEdit` will need a retention policy long before it needs a second index: the stack is
+only ever read from the top, so rows below the most recent undone edit are audit trail, not
+working set. Not built now — there is no volume to justify it, and YAGNI beats a cleanup job
+nobody has measured the need for.
+
 ## 8. Reproducing this
 
 ```bash

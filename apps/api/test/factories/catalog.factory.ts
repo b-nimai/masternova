@@ -175,9 +175,43 @@ export async function seedCourseWithStructure(
  * Sections and lectures cascade from the course and need no statement of their own.
  */
 export async function resetCatalog(prisma: PrismaClient): Promise<void> {
+  // `CourseEdit` cascades from the course, so it needs no statement of its own.
   await prisma.course.deleteMany();
   await prisma.category.deleteMany();
   await prisma.idempotencyRecord.deleteMany();
   await prisma.outboxMessage.deleteMany();
   await prisma.user.deleteMany();
+}
+
+/**
+ * A course that passes every publish requirement.
+ *
+ * It exists because the gate has ten rules and a test about *transitions* should not be a
+ * test about remembering all ten — a missing thumbnail failing a lifecycle test tells you
+ * nothing you wanted to know. Tests that are about the gate build their own broken course.
+ */
+export async function seedPublishableCourse(
+  prisma: PrismaClient,
+  instructorId: string,
+  overrides: CourseSeed = {},
+): Promise<Course> {
+  const category = await createCategory(prisma, { name: 'DevOps' });
+
+  const course = await seedCourseWithStructure(prisma, {
+    instructorId,
+    sections: 1,
+    lecturesPerSection: 2,
+    course: {
+      status: 'DRAFT',
+      publishedAt: null,
+      subtitle: 'Run it in production without crying',
+      description: 'x'.repeat(200),
+      categoryId: category.id,
+      thumbnailKey: 'thumbs/publishable.png',
+      priceSetAt: new Date(),
+      ...overrides,
+    },
+  });
+
+  return course;
 }

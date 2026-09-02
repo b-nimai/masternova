@@ -267,16 +267,31 @@ export const updateCourseSchema = createCourseSchema.partial().extend({
 });
 export type UpdateCourseInput = z.infer<typeof updateCourseSchema>;
 
-export const coursePricingSchema = z
-  .object({
-    priceMinor: z.number().int().nonnegative(),
-    listPriceMinor: z.number().int().nonnegative().nullable().default(null),
-    currency: currencySchema.default('INR'),
-  })
-  .refine((v) => v.listPriceMinor === null || v.listPriceMinor >= v.priceMinor, {
-    message: 'listPriceMinor is the struck-through "was" price and cannot be below the price',
-    path: ['listPriceMinor'],
-  });
+const coursePricingFields = z.object({
+  priceMinor: z.number().int().nonnegative(),
+  listPriceMinor: z.number().int().nonnegative().nullable().default(null),
+  currency: currencySchema.default('INR'),
+});
+
+/**
+ * Split into fields + refinement so the authoring block below can extend it with
+ * `expectedVersion`. A `.refine()` produces a `ZodEffects`, which has no `.extend()` — so
+ * the object has to stay reachable, or the cross-field rule gets copy-pasted.
+ */
+const withListPriceAbovePrice = (value: {
+  priceMinor: number;
+  listPriceMinor: number | null;
+}): boolean => value.listPriceMinor === null || value.listPriceMinor >= value.priceMinor;
+
+const listPriceMessage = {
+  message: 'listPriceMinor is the struck-through "was" price and cannot be below the price',
+  path: ['listPriceMinor'],
+};
+
+export const coursePricingSchema = coursePricingFields.refine(
+  withListPriceAbovePrice,
+  listPriceMessage,
+);
 export type CoursePricingInput = z.infer<typeof coursePricingSchema>;
 
 export const categoryNodeSchema = z.object({
@@ -326,3 +341,185 @@ export const instructorCourseSchema = moneySchema.extend({
   updatedAt: z.string(),
 });
 export type InstructorCourse = z.infer<typeof instructorCourseSchema>;
+
+/* ------------------------ catalog — authoring ----------------------- */
+
+/**
+ * Optimistic concurrency, on every write that changes *content*.
+ *
+ * The force is two open tabs, which is not a hypothetical: the wizard autosaves, so a
+ * second tab left open on yesterday's state will happily PATCH a title over work done in
+ * the first one. Last-write-wins loses the edit silently, which is the worst available
+ * outcome. The client echoes back the `version` it rendered, and a mismatch is a 409 the
+ * UI can turn into "this course changed elsewhere — reload".
+ *
+ * Deliberately **not** on the lifecycle transitions (`/submit`, `/publish`, `/archive`).
+ * Those are not lost updates: they re-read the course and re-run the publish gate against
+ * whatever it now contains, so a stale caller either publishes a course that is still
+ * valid or is told exactly what is missing. Demanding a version there would make the
+ * publish button in a list row — which never loaded a version — impossible to build.
+ */
+export const versionedSchema = z.object({
+  expectedVersion: z.number().int().nonnegative(),
+});
+
+export const lectureDraftSchema = z.object({
+  title: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(2_000).nullable().default(null),
+  kind: lectureKindSchema.default('VIDEO'),
+  isPreview: z.boolean().default(false),
+  durationSeconds: z.number().int().nonnegative().default(0),
+  /** Set by media (task 1.6) once an upload finishes; the wizard sends it back verbatim. */
+  assetId: z.string().nullable().default(null),
+  articleBody: z.string().max(100_000).nullable().default(null),
+});
+export type LectureDraft = z.infer<typeof lectureDraftSchema>;
+
+/** Every field optional — the wizard PATCHes one field at a time as the instructor types. */
+export const lecturePatchSchema = lectureDraftSchema.partial();
+export type LecturePatch = z.infer<typeof lecturePatchSchema>;
+
+/**
+ * A curriculum edit, as a **first-class object** rather than nine endpoints.
+ *
+ * **The force.** The wizard needs undo, and undo needs the edit to be a value it can store,
+ * invert and replay. Nine REST verbs cannot be inverted — a `DELETE /sections/:id` leaves
+ * nothing behind to reverse. One command union can: it is parsed, applied, and written to
+ * `CourseEdit` alongside the inverse computed at that moment.
+ *
+ * It is also why there is one route instead of nine, and why adding "duplicate a lecture"
+ * later is a new member of this union plus a handler, with zero edits to the controller,
+ * the service, or the undo path (CLAUDE.md §1 O).
+ */
+export const curriculumCommandSchema = z.discriminatedUnion('kind', [
+  z.object({ kind: z.literal('ADD_SECTION'), title: z.string().trim().min(1).max(160) }),
+  z.object({
+    kind: z.literal('RENAME_SECTION'),
+    sectionId: z.string(),
+    title: z.string().trim().min(1).max(160),
+  }),
+  z.object({ kind: z.literal('REMOVE_SECTION'), sectionId: z.string() }),
+  /**
+   * The whole order, not a `(id, newIndex)` pair. A partial reorder has to be reconciled
+   * against a list the server re-reads, and two tabs dragging different rows then produce
+   * an order neither of them asked for. Sending the list the instructor is actually looking
+   * at makes the operation total, and the `expectedVersion` check rejects the stale one.
+   */
+  z.object({ kind: z.literal('REORDER_SECTIONS'), sectionIds: z.array(z.string()).min(1) }),
+  z.object({
+    kind: z.literal('ADD_LECTURE'),
+    sectionId: z.string(),
+    lecture: lectureDraftSchema,
+  }),
+  z.object({ kind: z.literal('UPDATE_LECTURE'), lectureId: z.string(), patch: lecturePatchSchema }),
+  z.object({ kind: z.literal('REMOVE_LECTURE'), lectureId: z.string() }),
+  z.object({
+    kind: z.literal('MOVE_LECTURE'),
+    lectureId: z.string(),
+    toSectionId: z.string(),
+    /** Zero-based index within the destination, not a `position` — positions are ours. */
+    toIndex: z.number().int().nonnegative(),
+  }),
+]);
+export type CurriculumCommand = z.infer<typeof curriculumCommandSchema>;
+
+export const curriculumEditRequestSchema = versionedSchema.extend({
+  command: curriculumCommandSchema,
+});
+export type CurriculumEditRequest = z.infer<typeof curriculumEditRequestSchema>;
+
+/**
+ * The two commands that exist only as inverses.
+ *
+ * A restore carries the ids of what it is bringing back, so undoing a removal does not
+ * silently re-key the rows — a lecture id already handed to media (task 1.6) or sitting in
+ * someone's progress record (1.10) must come back as itself. That is exactly why they are
+ * **not** in `curriculumCommandSchema`: a client that could POST `RESTORE_LECTURE` could
+ * choose its own primary keys.
+ */
+export const curriculumInverseSchema = z.discriminatedUnion('kind', [
+  ...curriculumCommandSchema.options,
+  z.object({
+    kind: z.literal('RESTORE_SECTION'),
+    section: z.object({
+      id: z.string(),
+      title: z.string(),
+      position: z.number().int(),
+      lectures: z.array(lectureDraftSchema.extend({ id: z.string(), position: z.number().int() })),
+    }),
+  }),
+  z.object({
+    kind: z.literal('RESTORE_LECTURE'),
+    sectionId: z.string(),
+    lecture: lectureDraftSchema.extend({ id: z.string(), position: z.number().int() }),
+  }),
+]);
+export type CurriculumInverse = z.infer<typeof curriculumInverseSchema>;
+
+export const editableLectureSchema = lectureDraftSchema.extend({
+  id: z.string(),
+  position: z.number().int(),
+});
+
+export const editableSectionSchema = z.object({
+  id: z.string(),
+  title: z.string(),
+  position: z.number().int(),
+  lectures: z.array(editableLectureSchema),
+});
+
+/**
+ * What the wizard renders. Distinct from `courseDetailSchema`'s sections because an author
+ * needs `assetId` and `articleBody`, and a learner browsing the catalog must not be handed
+ * the body of an article they have not bought.
+ */
+export const curriculumSchema = z.object({
+  courseId: z.string(),
+  version: z.number().int(),
+  /** Whether `POST /curriculum/undo` has anything to pop. Drives the button's disabled state. */
+  canUndo: z.boolean(),
+  sections: z.array(editableSectionSchema),
+});
+export type Curriculum = z.infer<typeof curriculumSchema>;
+
+/**
+ * The wizard's steps. The publish gate is expressed per step so the UI can put a tick next
+ * to each one, rather than discovering at the end that something four screens back is
+ * missing.
+ */
+export const wizardStepSchema = z.enum(['DETAILS', 'CURRICULUM', 'PRICING']);
+export type WizardStep = z.infer<typeof wizardStepSchema>;
+
+export const publishProblemSchema = z.object({
+  /** Stable, machine-readable; the UI keys its copy off this, not off `message`. */
+  code: z.string(),
+  step: wizardStepSchema,
+  message: z.string(),
+});
+export type PublishProblem = z.infer<typeof publishProblemSchema>;
+
+export const publishReadinessSchema = z.object({
+  courseId: z.string(),
+  status: courseStatusSchema,
+  version: z.number().int(),
+  ready: z.boolean(),
+  /** The transitions legal from the current state, so the UI enables buttons it can use. */
+  allowedTransitions: z.array(courseStatusSchema),
+  steps: z.array(
+    z.object({
+      step: wizardStepSchema,
+      complete: z.boolean(),
+      problems: z.array(publishProblemSchema),
+    }),
+  ),
+});
+export type PublishReadiness = z.infer<typeof publishReadinessSchema>;
+
+/** The PATCH bodies, which are the content writes and therefore carry a version. */
+export const updateCourseRequestSchema = updateCourseSchema.merge(versionedSchema);
+export type UpdateCourseRequest = z.infer<typeof updateCourseRequestSchema>;
+
+export const coursePricingRequestSchema = coursePricingFields
+  .merge(versionedSchema)
+  .refine(withListPriceAbovePrice, listPriceMessage);
+export type CoursePricingRequest = z.infer<typeof coursePricingRequestSchema>;

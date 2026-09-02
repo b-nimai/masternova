@@ -1,37 +1,35 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { Course, CourseStatus, Role } from '@masternova/db';
+import type { Course } from '@masternova/db';
 import { UNIT_OF_WORK, type UnitOfWork } from '@masternova/contracts';
-import type { CoursePricingInput, CreateCourseInput, UpdateCourseInput } from '@masternova/shared';
+import type {
+  CoursePricingRequest,
+  CreateCourseInput,
+  UpdateCourseRequest,
+} from '@masternova/shared';
 import { slugify } from '../../common/utils/slug';
-import {
-  CourseNotFoundException,
-  IllegalCourseTransitionException,
-  NotCourseOwnerException,
-} from '../../common/exceptions';
+import { CourseVersionConflictException } from '../../common/exceptions';
 import { COURSE_WRITER, type ICourseWriter } from './repositories/course.writer.interface';
-import { COURSE_READER, type ICourseReader } from './repositories/course.reader.interface';
+import { CourseAccessService } from './course-access.service';
+import type { Actor } from './actor';
 
 /**
- * The write side: create a course, edit its details, price it, move its status.
+ * The course row's write side: create it, edit its details, price it.
  *
- * **Scope boundary, stated because it is a decision and not an omission.** The draft state
- * machine, per-step validation, the publish gate ("every section has ≥1 lecture, all media
- * READY, price set") and optimistic-concurrency autosave are task 1.5. This service ships
- * the one guard that is true regardless of those rules — `ARCHIVED` is terminal — and the
- * events. Task 1.5 replaces the guard with the State machine and no event name moves.
+ * **What it no longer does.** Status transitions left with task 1.5 — they answer to the
+ * state machine and the publish gate, which is a different reason to change, so they are
+ * `CourseLifecycleService` (CLAUDE.md §1 S). Curriculum edits are `CurriculumService`. What
+ * is left is three methods over one row.
  *
- * Pricing is a separate method and a separate endpoint from the rest of the details,
- * because it changes for a different reason and emits a different event (CLAUDE.md §1 S).
- * What a price *should be* — coupons, tax, regional pricing — belongs to `PricingService`
- * in commerce (task 1.9). Catalog stores a number; it does not compute one.
+ * Pricing stays separate from the rest of the details because it changes for a different
+ * reason and emits a different event. What a price *should be* — coupons, tax, regional
+ * pricing — belongs to `PricingService` in commerce (task 1.9). Catalog stores a number; it
+ * does not compute one.
  */
 @Injectable()
 export class CourseEditingService {
   constructor(
     @Inject(COURSE_WRITER) private readonly courses: ICourseWriter,
-    // Reads and writes are injected separately, and the constructor says so — this
-    // service genuinely needs both roles, which is exactly when a split is worth having.
-    @Inject(COURSE_READER) private readonly reader: ICourseReader,
+    private readonly access: CourseAccessService,
     @Inject(UNIT_OF_WORK) private readonly uow: UnitOfWork,
   ) {}
 
@@ -63,11 +61,13 @@ export class CourseEditingService {
     });
   }
 
-  async updateDetails(id: string, input: UpdateCourseInput, actor: Actor): Promise<Course> {
-    await this.assertOwned(id, actor);
+  async updateDetails(id: string, input: UpdateCourseRequest, actor: Actor): Promise<Course> {
+    await this.access.assertEditable(id, actor);
+    const { expectedVersion, ...patch } = input;
 
     return this.uow.execute(async (ctx) => {
-      const course = await this.courses.updateDetails(id, input, ctx.executor);
+      await this.claim(id, expectedVersion, ctx.executor);
+      const course = await this.courses.updateDetails(id, patch, ctx.executor);
 
       ctx.publish({
         type: 'catalog.course.updated',
@@ -76,17 +76,18 @@ export class CourseEditingService {
         // A list of changed fields rather than one event per field: the search indexer
         // needs exactly one message meaning "reindex this", and a per-field vocabulary
         // would make adding a column a cross-context change.
-        payload: { courseId: id, changed: Object.keys(input) },
+        payload: { courseId: id, changed: Object.keys(patch) },
       });
 
       return course;
     });
   }
 
-  async updatePricing(id: string, input: CoursePricingInput, actor: Actor): Promise<Course> {
-    const existing = await this.assertOwned(id, actor);
+  async updatePricing(id: string, input: CoursePricingRequest, actor: Actor): Promise<Course> {
+    const existing = await this.access.assertEditable(id, actor);
 
     return this.uow.execute(async (ctx) => {
+      await this.claim(id, input.expectedVersion, ctx.executor);
       const course = await this.courses.updatePricing(
         id,
         {
@@ -117,71 +118,14 @@ export class CourseEditingService {
   }
 
   /**
-   * Moves a course's status, and publishes the event that the search index and the
-   * entitlement cache both react to.
+   * Optimistic concurrency, and the row lock, as the first statement of the transaction —
+   * the same claim `CurriculumService` makes, for the same reason. See `claimVersion`.
    */
-  async setStatus(id: string, status: CourseStatus, actor: Actor): Promise<Course> {
-    const existing = await this.assertOwned(id, actor);
-    assertLegal(existing.status, status);
-
-    return this.uow.execute(async (ctx) => {
-      const course = await this.courses.setStatus(id, status, ctx.executor);
-
-      ctx.publish({
-        type: EVENT_FOR_STATUS[status],
-        aggregateType: 'Course',
-        aggregateId: id,
-        payload: {
-          courseId: id,
-          instructorId: course.instructorId,
-          slug: course.slug,
-          previousStatus: existing.status,
-          publishedAt: course.publishedAt?.toISOString() ?? null,
-        },
-      });
-
-      return course;
-    });
-  }
-
-  /**
-   * Ownership, not just existence.
-   *
-   * Uses `findById`, which ignores visibility, because this is an authorization check that
-   * must see the row as it is — including the statuses `visibleTo` would hide from the
-   * very person who owns them.
-   */
-  private async assertOwned(id: string, actor: Actor): Promise<Course> {
-    const course = await this.reader.findById(id);
-    if (!course) throw new CourseNotFoundException();
-    if (actor.role !== 'ADMIN' && course.instructorId !== actor.id) {
-      throw new NotCourseOwnerException();
+  private async claim(id: string, expectedVersion: number, executor: unknown): Promise<number> {
+    const claim = await this.courses.claimVersion(id, expectedVersion, executor);
+    if (!claim.claimed) {
+      throw new CourseVersionConflictException(expectedVersion, claim.currentVersion);
     }
-    return course;
-  }
-}
-
-export interface Actor {
-  readonly id: string;
-  readonly role: Role;
-}
-
-const EVENT_FOR_STATUS: Record<CourseStatus, string> = {
-  DRAFT: 'catalog.course.unpublished',
-  IN_REVIEW: 'catalog.course.unpublished',
-  PUBLISHED: 'catalog.course.published',
-  ARCHIVED: 'catalog.course.archived',
-};
-
-/**
- * The whole state machine task 1.4 ships, and it is one rule: archiving is terminal.
- *
- * Everything else — DRAFT → IN_REVIEW → PUBLISHED and back — is legal here and gains its
- * real preconditions in task 1.5, where the publish gate lives. Writing a half state
- * machine now would mean writing it twice.
- */
-function assertLegal(from: CourseStatus, to: CourseStatus): void {
-  if (from === 'ARCHIVED' && to !== 'ARCHIVED') {
-    throw new IllegalCourseTransitionException(from, to);
+    return claim.version;
   }
 }

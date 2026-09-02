@@ -158,10 +158,19 @@ export class SessionService {
   ): Promise<void> {
     await this.uow.execute(async (ctx) => {
       const tx = ctx.executor as PrismaClient;
-      await tx.session.updateMany({
+      const { count } = await tx.session.updateMany({
         where: { id: sessionId, revokedAt: null },
         data: { revokedAt: new Date(), revokedReason: 'REUSE_DETECTED' },
       });
+
+      // Only the revoke that actually took effect publishes, exactly as `revokeAllForUser`
+      // does. A stolen used token can be replayed by an unauthenticated attacker as fast as
+      // they like, and publishing unconditionally turns each replay into another "we signed
+      // you out to protect your account" email — a mail-bomb aimed at the victim, paid for
+      // in this domain's sender reputation. The first replay is the one that carries the
+      // information; the rest are noise.
+      if (count === 0) return;
+
       ctx.publish({
         type: IdentityEvent.RefreshReuseDetected,
         aggregateType: 'User',

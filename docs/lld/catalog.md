@@ -55,16 +55,20 @@ it would let a caller write a lecture without updating its course's rollup count
 **Legal states of a course:**
 
 ```
-DRAFT ⇄ IN_REVIEW ⇄ PUBLISHED
-  └──────────┴──────────┴──────► ARCHIVED   (terminal)
+DRAFT ──submit──► IN_REVIEW ──publish (ADMIN)──► PUBLISHED
+  ▲                   │                              │
+  └────withdraw───────┘◄──────unpublish──────────────┘
+  └──────────┴──────────────────────────────────────────► ARCHIVED   (terminal)
 ```
 
-**Scope, stated as a decision rather than left as an omission.** Task 1.4 enforces exactly
-one rule — `ARCHIVED` is terminal — and publishes the events. The full state machine,
-per-step validation, the publish gate ("every section has ≥1 lecture, all media READY, price
-set") and optimistic-concurrency autosave are **task 1.5**. Writing half a state machine now
-would mean writing it twice. The `version` column ships now regardless, because adding it
-later is a second migration over a table that by then has real rows.
+**Delivered in two steps, deliberately.** Task 1.4 enforced exactly one rule — `ARCHIVED` is
+terminal — and published the events; writing half a state machine would have meant writing
+it twice. **Task 1.5 replaced that guard with the real machine**, added the publish gate,
+optimistic-concurrency autosave and the Command-based curriculum editor, and it moved the
+diagram above: there is no longer an edge from `DRAFT` straight to `PUBLISHED`, and approval
+out of `IN_REVIEW` is reviewer-only. All of it lives in
+[`wizard-draft-state.md`](wizard-draft-state.md); this file stops at what a course _is_ and
+how it is read.
 
 ## 4. Class design
 
@@ -249,19 +253,19 @@ second implementation — "one implementation is not a seam", `CLAUDE.md` §3.
 
 ## 8. Failure modes
 
-| Failure                                         | How it is detected                        | Behaviour                                                     | Recovery                                      |
-| ----------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------- | --------------------------------------------- |
-| Stranger requests an unpublished course         | `visibleTo` is part of the `WHERE`        | **404**, never 403 — a 403 confirms the course exists         | —                                             |
-| Cursor tampered, truncated, or from a sort swap | `decodeCursor` validates the sort         | 400 `InvalidCursorException`                                  | Client restarts at page 1                     |
-| Course published mid-pagination                 | —                                         | Keyset anchors on the sort key, so no row repeats or vanishes | —                                             |
-| Cursor anchored on an unpublished course        | null sort key → explicit `IS NULL` branch | Paging continues by id                                        | —                                             |
-| Two sections written at the same position       | `(courseId, position)` unique             | Prisma `P2002`                                                | Task 1.5's two-pass reorder                   |
-| Duplicate fails midway                          | Transaction rolls back                    | No course, no sections, no event                              | Retry; the `Idempotency-Key` makes it safe    |
-| Double-clicked "Duplicate"                      | `IdempotencyInterceptor`                  | Stored response replayed; **one** copy exists                 | —                                             |
-| Instructor edits another's course               | Ownership check via `findById`            | 403 `NotCourseOwnerException`                                 | —                                             |
-| Publish on an archived course                   | `assertLegal`                             | 409 `IllegalCourseTransitionException`                        | —                                             |
-| Inverted price range from the UI                | `priceBetween` throws                     | 400, rather than silently returning nothing                   | Fix the caller — the empty list would hide it |
-| Unknown category slug                           | —                                         | Empty list, not a 404                                         | A stale bookmark should not error             |
+| Failure                                         | How it is detected                        | Behaviour                                                     | Recovery                                          |
+| ----------------------------------------------- | ----------------------------------------- | ------------------------------------------------------------- | ------------------------------------------------- |
+| Stranger requests an unpublished course         | `visibleTo` is part of the `WHERE`        | **404**, never 403 — a 403 confirms the course exists         | —                                                 |
+| Cursor tampered, truncated, or from a sort swap | `decodeCursor` validates the sort         | 400 `InvalidCursorException`                                  | Client restarts at page 1                         |
+| Course published mid-pagination                 | —                                         | Keyset anchors on the sort key, so no row repeats or vanishes | —                                                 |
+| Cursor anchored on an unpublished course        | null sort key → explicit `IS NULL` branch | Paging continues by id                                        | —                                                 |
+| Two sections written at the same position       | `(courseId, position)` unique             | Prisma `P2002`                                                | The two-pass reorder — `wizard-draft-state.md` §9 |
+| Duplicate fails midway                          | Transaction rolls back                    | No course, no sections, no event                              | Retry; the `Idempotency-Key` makes it safe        |
+| Double-clicked "Duplicate"                      | `IdempotencyInterceptor`                  | Stored response replayed; **one** copy exists                 | —                                                 |
+| Instructor edits another's course               | Ownership check via `findById`            | 403 `NotCourseOwnerException`                                 | —                                                 |
+| Publish on an archived course                   | `COURSE_LIFECYCLE` has no edge out of it  | 409 `IllegalCourseTransitionException`                        | Duplicate it into a fresh DRAFT                   |
+| Inverted price range from the UI                | `priceBetween` throws                     | 400, rather than silently returning nothing                   | Fix the caller — the empty list would hide it     |
+| Unknown category slug                           | —                                         | Empty list, not a 404                                         | A stale bookmark should not error                 |
 
 ## 9. Data & indexes
 

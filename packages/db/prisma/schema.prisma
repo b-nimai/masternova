@@ -430,6 +430,13 @@ model Course {
   /// discounted, and 0 would be a lie the UI has to special-case.
   listPriceMinor Int?
   currency       Currency @default(INR)
+  /// Stamped the first time an instructor confirms pricing.
+  ///
+  /// It exists because `priceMinor = 0` is genuinely ambiguous: it is both "this course is
+  /// free" and "nobody has thought about price yet", and the publish gate has to tell them
+  /// apart. Without this column the gate would either ban free courses or wave through a
+  /// paid course an instructor forgot to price — and the second one costs real money.
+  priceSetAt     DateTime?
 
   /// Object keys, not URLs. A URL embeds the CDN host, which changes; a key does not.
   thumbnailKey      String?
@@ -469,6 +476,7 @@ model Course {
   updatedAt DateTime @updatedAt
 
   sections Section[]
+  edits    CourseEdit[]
 
   // Every index below is justified by a measured before/after on 10,000 seeded courses in
   // `docs/db/indexes.md`. They land in their own migration, after the tables, so the
@@ -549,4 +557,46 @@ model Lecture {
 
   @@unique([sectionId, position])
   @@index([sectionId, position])
+}
+
+
+/// One applied wizard edit, and the edit that would undo it.
+///
+/// **Why this is a table and not an in-memory stack.** The API runs as more than one ECS
+/// task behind a load balancer (task 2.6), so the tab that made an edit is not guaranteed
+/// to reach the same process when it presses undo. An in-memory stack would work on a
+/// laptop and silently lose the history in production, which is the worst kind of bug to
+/// ship. It also survives a deploy, which an instructor mid-wizard will notice.
+///
+/// **Why the inverse is stored rather than derived.** The undo of "remove section 3" is
+/// "recreate section 3 with these four lectures at these positions", and that information
+/// exists only in the instant *before* the removal ran. Deriving it later is impossible;
+/// computing it at apply time and storing it is the whole trick.
+model CourseEdit {
+  id String @id @default(cuid())
+
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  /// Who made the edit. Kept for the audit trail, never used for authorization — the
+  /// ownership check happens against the course, not against its history.
+  actorId String
+
+  /// The command as received, and its inverse. Both are the wire-shaped discriminated
+  /// union, re-parsed with Zod on the way out: a JSON column is not a type.
+  kind    String
+  command Json
+  inverse Json
+
+  /// The course `version` this edit produced. Also the stack order — undo pops the
+  /// highest un-undone version, which is stricter than "newest row" under a clock skew.
+  version Int
+
+  /// Set when this edit has been undone. Nullable rather than a delete, so the history a
+  /// support engineer reads still shows what happened and that it was reverted.
+  undoneAt  DateTime?
+  createdAt DateTime  @default(now())
+
+  /// Serves the only query there is: the top of one course's undo stack.
+  @@index([courseId, undoneAt, version(sort: Desc)])
 }

@@ -1,6 +1,7 @@
 import type { Course } from '@masternova/db';
 import type { NewDomainEvent, TransactionContext, UnitOfWork } from '@masternova/contracts';
 import { CourseDuplicationService } from './course-duplication.service';
+import { CourseAccessService } from './course-access.service';
 import type { CourseAggregate } from './prototype/course-prototype';
 import type { ICourseReader } from './repositories/course.reader.interface';
 import type { ICourseWriter, NewCourse, NewSection } from './repositories/course.writer.interface';
@@ -56,12 +57,31 @@ class FakeWriter implements ICourseWriter {
   setStatus(): Promise<Course> {
     throw new Error('not used by duplication');
   }
+  claimVersion(): never {
+    throw new Error('not used by duplication');
+  }
+  bumpVersion(): never {
+    throw new Error('not used by duplication');
+  }
 }
 
 class FakeReader implements Partial<ICourseReader> {
   constructor(private readonly aggregate: CourseAggregate | null) {}
   findDeepById(): Promise<CourseAggregate | null> {
     return Promise.resolve(this.aggregate);
+  }
+  /** What `CourseAccessService` reads for the ownership check — the row, not the graph. */
+  findById(): Promise<Course | null> {
+    return Promise.resolve(
+      this.aggregate
+        ? ({
+            id: this.aggregate.id,
+            instructorId: this.aggregate.instructorId,
+            status: 'DRAFT',
+            version: 0,
+          } as Course)
+        : null,
+    );
   }
 }
 
@@ -107,9 +127,11 @@ const aggregate = (over: Partial<CourseAggregate> = {}): CourseAggregate => ({
 const build = (source: CourseAggregate | null = aggregate()) => {
   const uow = new FakeUnitOfWork();
   const writer = new FakeWriter(uow);
+  const reader = new FakeReader(source) as unknown as ICourseReader;
   const service = new CourseDuplicationService(
-    new FakeReader(source) as unknown as ICourseReader,
+    reader,
     writer,
+    new CourseAccessService(reader),
     uow,
   );
   return { service, writer, uow };

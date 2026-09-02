@@ -1,29 +1,35 @@
-import { Body, Controller, Get, HttpCode, Param, Patch, Post, Req } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req } from '@nestjs/common';
 import type { FastifyRequest } from 'fastify';
 import {
-  coursePricingSchema,
+  coursePricingRequestSchema,
   createCourseSchema,
   instructorCourseListQuerySchema,
-  updateCourseSchema,
-  type CoursePricingInput,
+  updateCourseRequestSchema,
+  type CoursePricingRequest,
   type CourseListResponse,
   type CreateCourseInput,
   type InstructorCourseListQuery,
-  type UpdateCourseInput,
+  type UpdateCourseRequest,
   type InstructorCourse,
 } from '@masternova/shared';
-import type { Role } from '@masternova/db';
 import { ZodBody } from '../../common/pipes/zod-body.decorator';
 import { ZodQuery } from '../../common/pipes/zod-query.decorator';
 import { Roles } from '../../common/decorators/roles.decorator';
 import { Idempotent } from '../../common/decorators/idempotent.decorator';
 import { CourseCatalogService } from './course-catalog.service';
-import { CourseEditingService, type Actor } from './course-editing.service';
+import { CourseEditingService } from './course-editing.service';
 import { CourseDuplicationService } from './course-duplication.service';
 import { toInstructorCourse } from './course.mapper';
+import { actorOf } from './actor.request';
 
 /**
- * The authoring surface, separated from the public read controller rather than folded in
+ * The course *row*: list it, create it, edit its fields, price it, copy it.
+ *
+ * Its lifecycle lives on `CourseLifecycleController` and its curriculum on
+ * `CurriculumController` — three thin controllers over three services, each with one reason
+ * to change, rather than one controller with fourteen routes.
+ *
+ * The authoring surface is separated from the public read controller rather than folded in
  * as `GET /courses/mine`.
  *
  * Two reasons. Route matching would be order-dependent — `/courses/mine` has to be declared
@@ -59,7 +65,7 @@ export class InstructorCoursesController {
   @Patch(':id')
   update(
     @Param('id') id: string,
-    @ZodBody(updateCourseSchema) body: UpdateCourseInput,
+    @ZodBody(updateCourseRequestSchema) body: UpdateCourseRequest,
     @Req() request: FastifyRequest,
   ): Promise<InstructorCourse> {
     return this.editing.updateDetails(id, body, actorOf(request)).then(toInstructorCourse);
@@ -69,28 +75,10 @@ export class InstructorCoursesController {
   @Patch(':id/pricing')
   updatePricing(
     @Param('id') id: string,
-    @ZodBody(coursePricingSchema) body: CoursePricingInput,
+    @ZodBody(coursePricingRequestSchema) body: CoursePricingRequest,
     @Req() request: FastifyRequest,
   ): Promise<InstructorCourse> {
     return this.editing.updatePricing(id, body, actorOf(request)).then(toInstructorCourse);
-  }
-
-  @Post(':id/publish')
-  @HttpCode(200)
-  publish(@Param('id') id: string, @Req() request: FastifyRequest): Promise<InstructorCourse> {
-    return this.editing.setStatus(id, 'PUBLISHED', actorOf(request)).then(toInstructorCourse);
-  }
-
-  @Post(':id/unpublish')
-  @HttpCode(200)
-  unpublish(@Param('id') id: string, @Req() request: FastifyRequest): Promise<InstructorCourse> {
-    return this.editing.setStatus(id, 'DRAFT', actorOf(request)).then(toInstructorCourse);
-  }
-
-  @Post(':id/archive')
-  @HttpCode(200)
-  archive(@Param('id') id: string, @Req() request: FastifyRequest): Promise<InstructorCourse> {
-    return this.editing.setStatus(id, 'ARCHIVED', actorOf(request)).then(toInstructorCourse);
   }
 
   /**
@@ -110,8 +98,4 @@ export class InstructorCoursesController {
   ): Promise<InstructorCourse> {
     return this.duplication.duplicate(id, actorOf(request)).then(toInstructorCourse);
   }
-}
-
-function actorOf(request: FastifyRequest): Actor {
-  return { id: request.userId as string, role: request.userRole as Role };
 }
