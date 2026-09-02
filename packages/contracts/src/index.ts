@@ -15,4 +15,5 @@
 export * from './kernel/domain-event.js';
 export * from './kernel/unit-of-work.js';
 export * from './events/identity.events.js';
+export * from './events/media.events.js';
 export * from './notification/unsubscribe-token.js';

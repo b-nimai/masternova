@@ -96,7 +96,8 @@ Note the division of labour with §3. Where a write already carries `expectedVer
 replay is _already_ safe — the retry's version is stale and gets a 409, which is a better
 answer than a stored response because the client's copy really is out of date. So
 `Idempotency-Key` is reserved for unsafe writes that have **no** version to guard them:
-`POST /courses/:id/duplicate`, `POST /courses/:id/curriculum/undo`.
+`POST /courses/:id/duplicate`, `POST /courses/:id/curriculum/undo`,
+`POST /media/uploads/:id/complete`.
 
 ## 5. Money
 
@@ -114,7 +115,34 @@ REST verbs, because the edit has to be storable and invertible for undo. The dis
 is `kind`. Adding an edit type adds a member, not a route. See
 [`lld/wizard-draft-state.md`](../lld/wizard-draft-state.md).
 
-## 7. Still owed by task 1.11
+## 7. Large integers cross the wire as strings
+
+`Asset.sizeBytes` is a 64-bit integer, and `JSON.stringify` throws on a `BigInt`. Rather
+than remember to convert at each of the places a size is returned, the **wire type is a
+decimal string** and the conversion happens once, at the schema boundary.
+
+```jsonc
+{ "sizeBytes": "10737418240" }
+```
+
+The rule generalises: any value that can exceed `Number.MAX_SAFE_INTEGER`, or that is stored
+as a database `BIGINT`, is a string in JSON. Money is the deliberate exception — minor units
+of any real price fit comfortably in a `Number` (§5).
+
+## 8. Client-driven transfers return a plan, not a stream
+
+`POST /media/uploads` returns **part boundaries and presigned URLs**, and the bytes never
+touch the API. Two consequences worth stating as conventions:
+
+- **A window, not the whole plan.** At most 100 part URLs per response. A 10 GB upload is
+  1250 parts, and signing all of them would return a megabyte of JSON whose last URLs would
+  expire before a slow client reached them. The client sends its window, then asks again.
+- **Progress and resume are one endpoint.** `GET /media/uploads/:id` reports what the
+  storage provider actually holds and re-signs only the missing parts. There is no separate
+  `/resume`, deliberately: a recovery path used only after a crash is a path that first runs
+  in production. See [ADR-0017](../adr/0017-provider-truth-for-upload-progress.md).
+
+## 9. Still owed by task 1.11
 
 Versioning strategy (`/api/v1` vs header), rate-limit headers, the generated
 `openapi.yaml`, and schemathesis contract tests.

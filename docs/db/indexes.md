@@ -483,6 +483,26 @@ only ever read from the top, so rows below the most recent undone edit are audit
 working set. Not built now — there is no volume to justify it, and YAGNI beats a cleanup job
 nobody has measured the need for.
 
+## 7.6 Indexes added by task 1.6, and why they carry no EXPLAIN
+
+Same honesty as §7.5. Media has no seeded corpus and, more importantly, **no query here can
+be slow by construction** — every read is either by primary key or bounded by one user's
+uploads. Numbers against an empty table would prove nothing.
+
+| Index                               | What it is for                                                                                                                                                                                                                                           |
+| ----------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `Asset(storageKey)` **unique**      | A constraint, not performance work. The key is identity: two assets sharing one is a bug that would have them overwrite each other's bytes, so the database refuses it rather than the code remembering to.                                              |
+| `UploadSession(assetId)` **unique** | One session per asset, enforced where it cannot be forgotten. It is also what makes the `include: { asset: true }` read a single index lookup.                                                                                                           |
+| `UploadSession(status, expiresAt)`  | The reaper's queue: `status IN (CREATED, UPLOADING) AND expiresAt < now() ORDER BY expiresAt LIMIT 50`. The leading equality plus the range on the second column is exactly what a composite serves, and the `ORDER BY` comes out of the index for free. |
+| `Asset(ownerId, createdAt ⌄)`       | The instructor's media library, newest first — the same shape as the catalog's instructor listing.                                                                                                                                                       |
+| `Asset(status)`                     | Sweeping assets whose upload never finished. Low-cardinality and therefore a poor index in isolation; it earns its place only because `PENDING`/`FAILED` are a small minority of a table dominated by `READY`.                                           |
+
+**The one to watch.** `Asset(status)` is the kind of index §7 rejected for catalog — a
+three-value column is not selective. It is kept here on a different argument: the sweep asks
+for the _rare_ values, and the planner can use it precisely because `READY` dominates. If
+that stops being true the index stops being used, and the honest thing will be to drop it
+rather than defend it.
+
 ## 8. Reproducing this
 
 ```bash

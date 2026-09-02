@@ -41,4 +41,10 @@ export type {
   Lecture,
   LectureKind,
   Category,
+  CourseEdit,
+  Asset,
+  AssetKind,
+  AssetStatus,
+  UploadSession,
+  UploadSessionStatus,
 } from '@prisma/client';

@@ -50,6 +50,7 @@ model User {
   verificationTokens      VerificationToken[]
   notificationPreferences NotificationPreference[]
   courses                 Course[]
+  assets                  Asset[]
 
   @@index([role])
 }
@@ -599,4 +600,136 @@ model CourseEdit {
 
   /// Serves the only query there is: the top of one course's undo stack.
   @@index([courseId, undoneAt, version(sort: Desc)])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// media (task 1.6)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// What the file is *for*, which is what decides its size cap, its accepted MIME
+/// types and whether the transcode pipeline (task 1.7) picks it up at all.
+///
+/// Not a MIME type: `video/mp4` says how to decode the bytes, not that this upload is
+/// the lecture's source video rather than someone's course thumbnail.
+enum AssetKind {
+  VIDEO
+  IMAGE
+  ATTACHMENT
+}
+
+/// PENDING is the honest default: the row is created when the upload *starts*, so an
+/// asset id can be handed back immediately and the storage key is fixed before a single
+/// byte moves. READY means the bytes are in object storage and verified.
+///
+/// FAILED is terminal and is set by the reaper — a PENDING asset whose session expired
+/// is not "still waiting", and leaving it PENDING forever makes the state meaningless.
+enum AssetStatus {
+  PENDING
+  READY
+  FAILED
+}
+
+/// The transfer's lifecycle, distinct from the asset's. See `upload-session.ts` for the
+/// edge list — this enum is the vocabulary, that file is the machine.
+enum UploadSessionStatus {
+  CREATED
+  UPLOADING
+  /// The assemble call is in flight at the provider.
+  ///
+  /// This state exists because `CompleteMultipartUpload` is **not idempotent** — the
+  /// second caller gets `NoSuchUpload`, not a second success. Without somewhere to record
+  /// "one caller is already assembling", ten concurrent completes all reach the provider
+  /// and nine of them turn a lost race into a 500.
+  COMPLETING
+  COMPLETED
+  ABORTED
+  EXPIRED
+}
+
+/// A file in object storage, and the durable half of an upload.
+///
+/// **Why this is separate from `UploadSession`.** They have different lifetimes and
+/// different owners. The session is a transfer protocol that lives for hours and then
+/// stops existing in any interesting sense; the asset is referenced by a lecture for
+/// years and is what task 1.7 attaches renditions to. Folding them into one table would
+/// mean a course still joining to `uploadId` and `partSize` long after the upload that
+/// produced it stopped mattering.
+model Asset {
+  id String @id @default(cuid())
+
+  ownerId String
+  owner   User   @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+
+  kind   AssetKind
+  status AssetStatus @default(PENDING)
+
+  /// Derived from the id at session creation, never from the filename: a user-supplied
+  /// name is attacker-controlled and two people uploading `intro.mp4` must not collide.
+  /// Deterministic on purpose — task 1.7 needs stable output keys to be idempotent.
+  storageKey String @unique
+
+  contentType      String
+  /// BigInt, not Int. A 4 GB lecture recording overflows INT4's 2 147 483 647 bytes, and
+  /// the failure would be a silently truncated size rather than a loud error.
+  sizeBytes        BigInt
+  /// Kept for the download filename and for the instructor to recognise the row. Never
+  /// used to build a path.
+  originalFilename String
+
+  /// Filled by the probe job (task 1.7). Null here means "not probed yet", which is why
+  /// the publish gate asks for an asset rather than for a duration.
+  durationSeconds Int?
+
+  readyAt   DateTime?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+
+  uploadSession UploadSession?
+
+  /// The instructor's media library: their assets, newest first.
+  @@index([ownerId, createdAt(sort: Desc)])
+  /// Serves the reaper's sweep for assets whose upload never finished.
+  @@index([status])
+}
+
+/// One resumable multipart transfer.
+///
+/// **What is deliberately NOT here: a parts table.** The browser PUTs each part straight
+/// to object storage, so the API never observes a part landing. A row per part would
+/// therefore be a second copy of a fact only S3 knows, written by a client that may die
+/// at any moment — and the two would disagree exactly when it matters, which is during
+/// the resume that the missing rows were supposed to enable. `ListParts` is the truth.
+model UploadSession {
+  id String @id @default(cuid())
+
+  assetId String @unique
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  /// Denormalised from the asset so the ownership check on every resume/complete/abort
+  /// call is one read instead of a join.
+  ownerId String
+
+  status UploadSessionStatus @default(CREATED)
+
+  /// The provider's multipart upload id. Opaque to us; required by every part operation.
+  uploadId String
+
+  /// The plan the client was given. Stored because a resume must re-sign *the same*
+  /// part boundaries — re-deriving them from a size the client re-sends would let a
+  /// second call silently repartition a half-finished upload.
+  partSize  Int
+  partCount Int
+
+  /// When the provider's multipart upload is abandoned and the parts are reclaimed.
+  expiresAt   DateTime
+  completedAt DateTime?
+  /// Why it ended, when it ended badly. Read by support, never by a policy.
+  endedReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// Serves the reaper: the live sessions that are past their expiry.
+  @@index([status, expiresAt])
+  @@index([ownerId, createdAt(sort: Desc)])
 }

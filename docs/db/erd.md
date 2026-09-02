@@ -182,6 +182,34 @@ whatever produced it, and a suppression is a fact about an address rather than a
   a table rather than an in-memory stack because the API is more than one task, and the tab
   that made an edit is not guaranteed to reach the same process when it presses undo.
 
+### media
+
+- **`Asset` and `UploadSession` are separate tables because they have different lifetimes.**
+  The asset is referenced by a lecture for years; the session is a transfer protocol that
+  stops mattering in hours. One table would leave a lecture joining to `partSize`.
+- **There is deliberately no `upload_parts` table.** Parts are PUT by the browser straight
+  to object storage, so the API never observes one landing — a row per part would be a
+  second copy of a fact only the provider knows, written by a client allowed to crash, and
+  it would disagree with reality exactly during the resume it existed to serve. `ListParts`
+  is the authority. See [ADR-0017](../adr/0017-provider-truth-for-upload-progress.md).
+- `Asset.sizeBytes` is a **`BigInt`**. A 4 GB recording overflows INT4's 2 147 483 647, and
+  the failure would be a silently truncated size. It crosses the wire as a decimal string,
+  because `JSON.stringify` throws on a BigInt.
+- `Asset.storageKey` is **unique and derived from the asset id**, never from the filename —
+  which is attacker-controlled and may contain `../`. It is fixed before the first byte
+  moves, which is what makes completing an upload twice address the same object, and what
+  lets task 1.7 derive idempotent transcode output keys from it.
+- `Asset.status = PENDING` is the honest default: the row is created when the upload
+  _starts_, so an id can be handed back immediately. `FAILED` is set by the reaper — a
+  PENDING asset whose session expired is not "still waiting".
+- `UploadSession.status` includes **`COMPLETING`** because `CompleteMultipartUpload` is not
+  idempotent: it is the claim that makes exactly one caller reach the provider. Sessions are
+  moved with conditional updates (`WHERE id = ? AND status = ?`), so a reaper's expire and a
+  browser's complete cannot both land.
+- `UploadSession.partSize` / `partCount` store the plan the client was given, so a resume
+  re-signs _the same_ boundaries. Re-deriving them from a size the client re-sends would let
+  a second call silently repartition a half-finished upload.
+
 ## Indexes
 
 Every non-primary-key index, the query it serves, and its measured `EXPLAIN ANALYZE`

@@ -196,7 +196,53 @@ sequenceDiagram
 
 ---
 
-## 5. The shape all of these share
+## 5. Resumable upload → asset ready
+
+The only flow in this document where **the data does not pass through the API at all**.
+
+```mermaid
+sequenceDiagram
+  participant B as Browser
+  participant A as API
+  participant S as Object storage
+  participant D as Postgres
+  participant W as Worker (1.7)
+
+  B->>A: POST /media/uploads
+  A->>S: CreateMultipartUpload
+  A->>D: Asset(PENDING) + UploadSession(CREATED)
+  A-->>B: signed URLs for the first 100 parts
+
+  loop parts — no API involvement
+    B->>S: PUT part n
+  end
+
+  Note over B: laptop lid closes at part 340
+
+  B->>A: GET /media/uploads/:id
+  A->>S: ListParts
+  A-->>B: uploadedParts 1..339 + fresh URLs for the gap
+
+  B->>A: POST /media/uploads/:id/complete
+  A->>D: UPLOADING -> COMPLETING (conditional claim)
+  A->>S: CompleteMultipartUpload
+  A->>D: BEGIN · -> COMPLETED · Asset READY · outbox media.asset.ready · COMMIT
+  A-->>B: 200 READY
+  D-->>W: relay delivers media.asset.ready
+  W->>W: probe → transcode → package (task 1.7)
+```
+
+**What is different about this flow.** Everywhere else in this document the API is the thing
+that observes the change and then records it. Here the change happens between two systems
+the API is not part of, so it cannot observe anything — it can only **ask the provider**. That
+inverts the usual rule: our database holds the plan and the lifecycle, and object storage
+holds the facts. See [ADR-0017](../adr/0017-provider-truth-for-upload-progress.md).
+
+**What is the same.** The last step is identical to every other flow here — the state change
+and the outbox row commit in one transaction, and the pipeline that reacts is a consumer the
+producer has never heard of.
+
+## 6. The shape all of these share
 
 1. **State and its consequences commit together**, or neither does.
 2. **The request returns as soon as the state is durable.** Consequences are owed, not awaited.

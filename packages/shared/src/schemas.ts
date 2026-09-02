@@ -523,3 +523,98 @@ export const coursePricingRequestSchema = coursePricingFields
   .merge(versionedSchema)
   .refine(withListPriceAbovePrice, listPriceMessage);
 export type CoursePricingRequest = z.infer<typeof coursePricingRequestSchema>;
+
+/* ------------------------------- media ------------------------------- */
+
+export const assetKindSchema = z.enum(['VIDEO', 'IMAGE', 'ATTACHMENT']);
+export type AssetKind = z.infer<typeof assetKindSchema>;
+
+export const assetStatusSchema = z.enum(['PENDING', 'READY', 'FAILED']);
+export type AssetStatus = z.infer<typeof assetStatusSchema>;
+
+export const uploadSessionStatusSchema = z.enum([
+  'CREATED',
+  'UPLOADING',
+  /** The provider is assembling the parts. Exactly one caller is ever in this state. */
+  'COMPLETING',
+  'COMPLETED',
+  'ABORTED',
+  'EXPIRED',
+]);
+export type UploadSessionStatus = z.infer<typeof uploadSessionStatusSchema>;
+
+/**
+ * `sizeBytes` is a string on the wire.
+ *
+ * A 10 GB file is 10 737 418 240 bytes, which is inside `Number.MAX_SAFE_INTEGER` — but
+ * the column is a BigInt and `JSON.stringify` throws on one, so every response carrying a
+ * size would have to remember to convert. Making the wire type a decimal string once, at
+ * the boundary, means the conversion cannot be forgotten in the seventh place.
+ */
+const byteCountSchema = z
+  .string()
+  .regex(/^[1-9][0-9]{0,19}$/, 'Size must be a positive integer, in bytes');
+
+export const createUploadSchema = z.object({
+  kind: assetKindSchema,
+  /**
+   * Validated but never used to build a path — see `storageKeyFor`. The cap is here so a
+   * megabyte of filename cannot be stored.
+   */
+  filename: z.string().min(1).max(255),
+  contentType: z.string().min(1).max(255),
+  sizeBytes: byteCountSchema,
+});
+export type CreateUploadInput = z.infer<typeof createUploadSchema>;
+
+/** One part the client still has to send, and the URL to send it to. */
+export const uploadPartTargetSchema = z.object({
+  partNumber: z.number().int().positive(),
+  url: z.string().url(),
+  /** Inclusive start, exclusive end. The client slices the File with exactly these. */
+  rangeStart: byteCountSchema.or(z.literal('0')),
+  rangeEnd: byteCountSchema,
+});
+export type UploadPartTarget = z.infer<typeof uploadPartTargetSchema>;
+
+/**
+ * The resume contract, and the reason this endpoint exists.
+ *
+ * `uploadedParts` is what the *provider* is holding, not what the client thinks it sent —
+ * so a client that crashed mid-PUT learns the truth here and re-sends only the gap.
+ * `parts` carries freshly signed URLs, because the ones issued an hour ago have expired.
+ */
+export const uploadSessionSchema = z.object({
+  sessionId: z.string(),
+  assetId: z.string(),
+  status: uploadSessionStatusSchema,
+  partSize: z.number().int().positive(),
+  partCount: z.number().int().positive(),
+  uploadedParts: z.array(z.number().int().positive()),
+  parts: z.array(uploadPartTargetSchema),
+  expiresAt: z.string(),
+});
+export type UploadSessionView = z.infer<typeof uploadSessionSchema>;
+
+/**
+ * No parts and no ETags in the body.
+ *
+ * The obvious design has the client send back the ETag it got for each part, the way the
+ * AWS SDK's own high-level uploader does. Rejected: it makes the client the authority on
+ * what landed, and a client that lost its tab has no list to send. Asking the provider
+ * costs one `ListParts` call and works for a client that knows nothing but the session id.
+ */
+export const completeUploadSchema = z.object({});
+export type CompleteUploadInput = z.infer<typeof completeUploadSchema>;
+
+export const assetSchema = z.object({
+  id: z.string(),
+  kind: assetKindSchema,
+  status: assetStatusSchema,
+  contentType: z.string(),
+  sizeBytes: byteCountSchema,
+  originalFilename: z.string(),
+  durationSeconds: z.number().int().nonnegative().nullable(),
+  createdAt: z.string(),
+});
+export type AssetView = z.infer<typeof assetSchema>;

@@ -21,6 +21,7 @@ import { JwtAuthGuard } from './modules/identity/guards/jwt-auth.guard';
 import { RolesGuard } from './modules/identity/guards/roles.guard';
 import { NotificationModule } from './modules/notification/notification.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
+import { MediaModule } from './modules/media/media.module';
 
 @Module({
   imports: [
@@ -35,6 +36,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
     IdentityModule,
     NotificationModule,
     CatalogModule,
+    MediaModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },
