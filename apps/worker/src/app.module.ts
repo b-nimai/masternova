@@ -6,10 +6,12 @@ import {
   mailConfig,
   notificationConfig,
   redisConfig,
+  s3Config,
 } from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
 import { OutboxRelayModule } from './modules/outbox-relay/outbox-relay.module';
 import { NotificationModule } from './modules/notification/notification.module';
+import { PipelineModule } from './modules/pipeline/pipeline.module';
 
 /**
  * Standalone DI context — no HTTP server.
@@ -25,11 +27,12 @@ import { NotificationModule } from './modules/notification/notification.module';
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
-      load: [redisConfig, databaseConfig, mailConfig, notificationConfig],
+      load: [redisConfig, databaseConfig, mailConfig, notificationConfig, s3Config],
     }),
     PrismaModule,
     OutboxRelayModule,
     NotificationModule,
+    PipelineModule,
   ],
 })
 export class AppModule {}

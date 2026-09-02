@@ -11,11 +11,7 @@ import {
   UploadSessionExpiredException,
   UploadSessionNotFoundException,
 } from '../../common/exceptions';
-import {
-  STORAGE_PROVIDER,
-  type IStorageProvider,
-  type StoredPart,
-} from '../storage/storage.interface';
+import { STORAGE_PROVIDER, type IStorageProvider, type StoredPart } from '@masternova/storage';
 import type { Actor } from '../catalog/actor';
 import { MIN_PART_SIZE, partRange } from './upload-plan';
 import { isTerminal, transitionOn } from './upload-session';

@@ -56,5 +56,34 @@ export interface IStorageProvider {
    * answer this with `HeadObject`.
    */
   objectExists(key: string): Promise<boolean>;
+
+  /**
+   * A time-limited URL that *reads* an object.
+   *
+   * The transcode worker hands this to ffmpeg, which speaks HTTP — so a 10 GB source is
+   * streamed and decoded as it arrives rather than staged to the worker's disk first. That
+   * is the difference between a worker needing 10 GB of scratch space per concurrent job
+   * and needing none.
+   *
+   * Not to be confused with playback: this is a server-to-server credential with a short
+   * life, whereas a learner's access is decided by the entitlement engine (task 1.8).
+   */
+  presignDownload(key: string, expiresIn?: number): Promise<string>;
+
+  /**
+   * Write an object outright. Used for pipeline outputs — HLS segments, playlists, posters
+   * — which are produced by the worker rather than uploaded by a browser, and are small
+   * enough individually that multipart would be pure overhead.
+   */
+  putObject(key: string, body: Buffer, contentType: string): Promise<void>;
+
+  /**
+   * Every key under a prefix. The reconciliation sweeper's only question: what is in the
+   * bucket that no rendition row accounts for?
+   */
+  listKeys(prefix: string): Promise<string[]>;
+
+  /** Remove an orphan the sweeper identified. Deliberately one key at a time. */
+  deleteObject(key: string): Promise<void>;
   abortMultipartUpload(key: string, uploadId: string): Promise<void>;
 }

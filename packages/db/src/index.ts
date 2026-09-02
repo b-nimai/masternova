@@ -47,4 +47,9 @@ export type {
   AssetStatus,
   UploadSession,
   UploadSessionStatus,
+  PipelineStatus,
+  MediaRendition,
+  RenditionKind,
 } from '@prisma/client';
+
+export { PrismaUnitOfWork } from './unit-of-work';

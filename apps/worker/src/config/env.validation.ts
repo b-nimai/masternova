@@ -38,6 +38,17 @@ const envSchema = z.object({
   /// HMAC key for unsubscribe links. Rotating it invalidates every outstanding link,
   /// which is the whole revocation story for a stateless token.
   UNSUBSCRIBE_SECRET: z.string().min(32),
+
+  // --- object storage (task 1.7) ---
+  /// The transcode pipeline reads the source and writes every rendition, so these are
+  /// required rather than defaulted: a worker that silently points at the wrong bucket
+  /// produces renditions the API can never find, and the symptom is a lecture that
+  /// finishes processing and still will not play.
+  S3_ENDPOINT: z.string().url(),
+  S3_BUCKET: z.string().default('masternova-media'),
+  S3_REGION: z.string().default('us-east-1'),
+  S3_ACCESS_KEY: z.string().min(1),
+  S3_SECRET_KEY: z.string().min(1),
 });
 
 export type Env = z.infer<typeof envSchema>;

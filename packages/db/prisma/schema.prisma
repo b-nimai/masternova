@@ -684,7 +684,21 @@ model Asset {
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
 
+  /// How far the transcode pipeline has got. A **second axis** from `status`, on purpose:
+  /// `status = READY` means the bytes arrived, `pipeline = READY` means they are playable.
+  /// Collapsing them would make "upload finished" and "transcode finished" the same fact,
+  /// and the publish gate needs to tell them apart.
+  pipeline      PipelineStatus @default(PENDING)
+  /// Which step is running, for the wizard's progress bar. Free text on purpose — it is a
+  /// human-facing label, and giving it an enum would mean a migration per pipeline change.
+  pipelineStage String?
+  /// 0–100 across the whole DAG, not per job. What the SSE stream emits.
+  pipelinePercent Int      @default(0)
+  /// Why it failed, kept for the instructor-facing alert and the DLQ replay screen.
+  pipelineError   String?
+
   uploadSession UploadSession?
+  renditions    MediaRendition[]
 
   /// The instructor's media library: their assets, newest first.
   @@index([ownerId, createdAt(sort: Desc)])
@@ -732,4 +746,72 @@ model UploadSession {
   /// Serves the reaper: the live sessions that are past their expiry.
   @@index([status, expiresAt])
   @@index([ownerId, createdAt(sort: Desc)])
+}
+
+
+/// Where an asset is in the transcode DAG.
+///
+/// Separate from `AssetStatus` because they answer different questions and move at
+/// different times: an asset is `status = READY` the moment the upload assembles, and
+/// `pipeline = READY` only once every rendition exists and the HLS master is written.
+enum PipelineStatus {
+  /// No pipeline has started. The steady state for an IMAGE or an ATTACHMENT, which
+  /// nothing transcodes — deliberately not a separate `SKIPPED`, because "there is
+  /// nothing to do" and "it has not been done" are the same answer to every caller.
+  PENDING
+  RUNNING
+  READY
+  /// Every attempt was exhausted. The job is in the dead-letter set awaiting a replay.
+  FAILED
+}
+
+/// One output of the pipeline: a video rendition, the HLS master, a poster or a sprite.
+///
+/// **Why one table rather than columns on `Asset`.** The ABR ladder is data — which rungs
+/// exist depends on the source resolution, so a 480p upload produces two renditions and a
+/// 4K upload produces four. Columns would mean `has720p` booleans and a migration every
+/// time the ladder changes.
+///
+/// **`(assetId, name)` is unique, and that is the idempotency mechanism.** Output keys are
+/// derived from the asset id and the rendition name, so re-running a transcode overwrites
+/// the same object and upserts the same row. A worker killed mid-ladder and restarted
+/// cannot produce a duplicate.
+model MediaRendition {
+  id String @id @default(cuid())
+
+  assetId String
+  asset   Asset  @relation(fields: [assetId], references: [id], onDelete: Cascade)
+
+  kind RenditionKind
+  /// The ladder rung (`240p`, `720p`) or the artifact (`master`, `poster`, `sprite`).
+  /// Half of the uniqueness constraint that makes a re-run idempotent.
+  name String
+
+  /// Deterministic: `video/{assetId}/{name}/...`. Never contains anything a user typed.
+  storageKey String @unique
+  sizeBytes  BigInt
+
+  /// Null for a poster or a sprite — they have no resolution ladder position.
+  width      Int?
+  height     Int?
+  /// Video bitrate in bits per second, as encoded. Null for non-video artifacts.
+  bitrateBps Int?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// The idempotency key. A re-run upserts on this rather than inserting a second row.
+  @@unique([assetId, name])
+  @@index([assetId, kind])
+}
+
+enum RenditionKind {
+  /// One rung of the ABR ladder — an HLS variant playlist plus its segments.
+  VIDEO
+  /// The HLS master playlist that lists the rungs. What the player is pointed at.
+  MASTER
+  /// A single still frame for the course card and the player's poster attribute.
+  POSTER
+  /// The scrubbing filmstrip: a grid of thumbnails plus its WebVTT index.
+  SPRITE
 }

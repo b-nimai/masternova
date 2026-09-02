@@ -10,7 +10,7 @@ import { AppModule } from '../src/app.module';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { UploadReaperService } from '../src/modules/media/upload-reaper.service';
 import { UploadCompletionService } from '../src/modules/media/upload-completion.service';
-import { STORAGE_PROVIDER, type IStorageProvider } from '../src/modules/storage/storage.interface';
+import { STORAGE_PROVIDER, type IStorageProvider } from '@masternova/storage';
 import { startDatabase } from './setup-db';
 
 /**

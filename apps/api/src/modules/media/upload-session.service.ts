@@ -8,7 +8,7 @@ import {
   UploadSessionNotFoundException,
   UploadTooLargeException,
 } from '../../common/exceptions';
-import { STORAGE_PROVIDER, type IStorageProvider } from '../storage/storage.interface';
+import { STORAGE_PROVIDER, type IStorageProvider } from '@masternova/storage';
 import type { Actor } from '../catalog/actor';
 import { policyFor, storageKeyFor } from './media-policy';
 import { partRange, planUpload, type UploadPlan } from './upload-plan';

@@ -60,3 +60,25 @@ export const notificationConfig = registerAs('notification', () => ({
 }));
 
 export type NotificationConfig = ReturnType<typeof notificationConfig>;
+
+/**
+ * Object storage, for the transcode pipeline (task 1.7).
+ *
+ * Mirrors the API's `s3Config` deliberately: the same environment variables name the same
+ * bucket, because both deployables read and write the same objects. The values are handed
+ * to `StorageModule.forRootAsync` — the package itself never reads `process.env` (§4).
+ */
+export const s3Config = registerAs('s3', () => ({
+  bucket: process.env.S3_BUCKET ?? 'masternova-media',
+  region: process.env.S3_REGION ?? 'us-east-1',
+  accessKey: process.env.S3_ACCESS_KEY as string,
+  secretKey: process.env.S3_SECRET_KEY as string,
+  endpoint: process.env.S3_ENDPOINT as string,
+  /**
+   * The worker signs only server-to-server URLs, which ffmpeg fetches from inside the
+   * network — so unlike the API there is no browser-facing endpoint to differ from.
+   */
+  publicEndpoint: process.env.S3_ENDPOINT as string,
+}));
+
+export type S3Config = ReturnType<typeof s3Config>;

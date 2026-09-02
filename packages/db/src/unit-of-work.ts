@@ -1,7 +1,6 @@
 import { randomUUID } from 'node:crypto';
-import { Injectable } from '@nestjs/common';
 import type { NewDomainEvent, TransactionContext, UnitOfWork } from '@masternova/contracts';
-import { PrismaService } from '../../prisma/prisma.service';
+import type { PrismaClient } from '@prisma/client';
 
 /**
  * Prisma-backed {@link UnitOfWork}.
@@ -16,10 +15,19 @@ import { PrismaService } from '../../prisma/prisma.service';
  *
  * This is the half of the outbox pattern that people skip, and skipping it is why
  * "we publish after saving" systems lose effects under load.
+ *
+ * **It lives in a package because both deployables publish.** The API raises events on the
+ * request path (tasks 1.2–1.6) and the worker raises them at the end of the transcode
+ * pipeline (task 1.7). Keeping the implementation in `apps/api` would have left the worker
+ * to write `outboxMessage.createMany` by hand — a second copy of the one mechanism the
+ * whole outbox argument depends on, free to drift from the original. Same resolution as
+ * `packages/storage`.
+ *
+ * It takes a `PrismaClient` rather than a Nest `PrismaService`, so the package stays free
+ * of both apps' DI wiring; each app binds it to `UNIT_OF_WORK` with its own client.
  */
-@Injectable()
 export class PrismaUnitOfWork implements UnitOfWork {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaClient) {}
 
   async execute<T>(work: (ctx: TransactionContext) => Promise<T>): Promise<T> {
     return this.prisma.$transaction(async (tx) => {

@@ -1,6 +1,7 @@
 import { Global, Module } from '@nestjs/common';
 import { UNIT_OF_WORK } from '@masternova/contracts';
-import { PrismaUnitOfWork } from './unit-of-work.service';
+import { PrismaUnitOfWork } from '@masternova/db';
+import { PrismaService } from '../../prisma/prisma.service';
 
 /**
  * The write half of the transactional outbox. The read half — claiming, dispatching and
@@ -14,7 +15,16 @@ import { PrismaUnitOfWork } from './unit-of-work.service';
  */
 @Global()
 @Module({
-  providers: [{ provide: UNIT_OF_WORK, useClass: PrismaUnitOfWork }],
+  providers: [
+    {
+      // `useFactory`, not `useClass`: the implementation now lives in `packages/db` and
+      // takes a plain `PrismaClient`, so it has no Nest decorators for the container to
+      // read constructor metadata from. The app supplies its own client.
+      provide: UNIT_OF_WORK,
+      useFactory: (prisma: PrismaService) => new PrismaUnitOfWork(prisma),
+      inject: [PrismaService],
+    },
+  ],
   exports: [UNIT_OF_WORK],
 })
 export class OutboxModule {}

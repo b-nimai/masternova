@@ -5,9 +5,11 @@ import { UploadSessionService } from './upload-session.service';
 import { UploadCompletionService } from './upload-completion.service';
 import { UploadReaperService } from './upload-reaper.service';
 import { AssetService } from './asset.service';
-import { StorageModule } from '../storage/storage.module';
+import { StorageModule } from '@masternova/storage';
 import { MEDIA_REPOSITORY } from './repositories/media.repository.interface';
 import { PrismaMediaRepository } from './repositories/media.repository';
+import type { ConfigType } from '@nestjs/config';
+import { s3Config } from '../../config/configuration';
 
 /**
  * The `media` bounded context: getting a file from a browser into object storage, and
@@ -23,7 +25,14 @@ import { PrismaMediaRepository } from './repositories/media.repository';
  * the pipeline (1.7) is a handler on that event, so this module has no idea it exists.
  */
 @Module({
-  imports: [StorageModule],
+  imports: [
+    // Async, so the config is read at DI time rather than when this file is imported —
+    // see the note in `StorageModule`.
+    StorageModule.forRootAsync({
+      inject: [s3Config.KEY],
+      useFactory: (config: ConfigType<typeof s3Config>) => config,
+    }),
+  ],
   controllers: [UploadsController, AssetsController],
   providers: [
     UploadSessionService,
