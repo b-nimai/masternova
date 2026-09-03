@@ -51,6 +51,7 @@ model User {
   notificationPreferences NotificationPreference[]
   courses                 Course[]
   assets                  Asset[]
+  entitlements            Entitlement[]
 
   @@index([role])
 }
@@ -476,8 +477,9 @@ model Course {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  sections Section[]
-  edits    CourseEdit[]
+  sections     Section[]
+  edits        CourseEdit[]
+  entitlements Entitlement[]
 
   // Every index below is justified by a measured before/after on 10,000 seeded courses in
   // `docs/db/indexes.md`. They land in their own migration, after the tables, so the
@@ -814,4 +816,88 @@ enum RenditionKind {
   POSTER
   /// The scrubbing filmstrip: a grid of thumbnails plus its WebVTT index.
   SPRITE
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// entitlement (task 1.8)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// How the access was acquired. Kept because "revoke everything a refund touched" and
+/// "revoke everything an admin granted by hand" are different operations, and a single
+/// boolean cannot tell them apart after the fact.
+enum EntitlementSource {
+  /// Paid for. `orderId` points at the order that produced it (task 1.9).
+  PURCHASE
+  /// Enrolled in a course priced at zero. Still a row: "free" is a price, not an absence
+  /// of entitlement, and the learner's library has to list it like anything else.
+  FREE_ENROLLMENT
+  /// Granted by an administrator — support making good on a failed payment, a review copy.
+  MANUAL_GRANT
+}
+
+/// Two states, and no `EXPIRED`.
+///
+/// Expiry is a *date comparison*, not a state: a row that expires at midnight would need
+/// something to wake up and flip it, and until that job ran the table would disagree with
+/// the clock. `expiresAt` is read at decision time instead, so there is exactly one truth.
+enum EntitlementStatus {
+  ACTIVE
+  /// Refunded, charged back, or revoked by hand. Terminal for this row — a re-purchase
+  /// reactivates it rather than inserting a second one, so the unique pair below holds.
+  REVOKED
+}
+
+/// The right to access a course's paid content.
+///
+/// **Why a row and not a derived answer.** Access could be computed by asking commerce
+/// "is there a PAID order for this pair", but that makes every playback request a join
+/// into another bounded context, and it has no answer for the three ways access is
+/// acquired without an order: a free course, an admin grant, and a refund that must
+/// revoke access the order still records as paid. The row is the entitlement; the order
+/// is only the most common reason one exists.
+///
+/// **What this table deliberately does not decide.** Whether the course is published,
+/// whether the lecture is a free preview, and whether the asker is the instructor. Those
+/// are policies in the chain (`entitlement/policies/`), evaluated per request. Folding
+/// them in here would mean rewriting rows whenever a course is unpublished.
+model Entitlement {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  source EntitlementSource
+  status EntitlementStatus @default(ACTIVE)
+
+  /// Commerce's order id (task 1.9). A plain string, not a relation: commerce owns that
+  /// lifecycle, and the same rule the catalog already applies to `assetId` applies here —
+  /// a bounded context is a boundary in the schema too, not only in the module graph.
+  orderId String?
+
+  grantedAt DateTime  @default(now())
+  /// Null means lifetime access, which is what every course sells today. The column lands
+  /// now because cohort and subscription access are both on the roadmap, and adding a
+  /// nullable date later is a migration over a table that by then has real rows.
+  expiresAt DateTime?
+
+  revokedAt     DateTime?
+  /// Free text, shown to support rather than parsed: "refund rzp_xxx", "chargeback".
+  revokedReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  /// **One row per pair, and this is load-bearing.** It makes the grant an upsert, which
+  /// is what makes it idempotent under the at-least-once delivery of `order.paid` — the
+  /// outbox is explicitly allowed to deliver that event twice, and without this constraint
+  /// the second delivery would insert a second entitlement that no revoke would find.
+  @@unique([userId, courseId])
+
+  /// The learner's library: "my courses", newest first.
+  @@index([userId, status, grantedAt(sort: Desc)])
+  /// Revoking everything an order produced, and the refund path's only query.
+  @@index([orderId])
 }

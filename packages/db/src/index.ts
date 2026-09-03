@@ -57,4 +57,7 @@ export type {
   PipelineStatus,
   MediaRendition,
   RenditionKind,
+  Entitlement,
+  EntitlementSource,
+  EntitlementStatus,
 } from '@prisma/client';

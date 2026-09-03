@@ -88,7 +88,7 @@ export default tseslint.config(
     settings: {
       'boundaries/elements': [
         { type: 'module', pattern: 'apps/*/src/modules/*', capture: ['app', 'moduleName'] },
-        { type: 'shared-infra', pattern: 'apps/*/src/(common|config|prisma|types)/**' },
+        { type: 'shared-infra', pattern: 'apps/*/src/(common|config|prisma|redis|types)/**' },
         { type: 'root', pattern: 'apps/*/src/(main|app.module).ts' },
       ],
       'boundaries/include': ['apps/**/*.ts'],

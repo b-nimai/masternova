@@ -34,6 +34,29 @@ const envSchema = z.object({
   // Absent means the bounce webhook rejects everything rather than trusting the caller.
   MAIL_WEBHOOK_SECRET: z.string().optional(),
 
+  // Whether to believe `X-Forwarded-For`. **Only ever true behind a proxy we control** —
+  // trusting the header when nothing strips it lets any client claim any address, which
+  // would defeat the very binding it exists to enable. On behind the ALB (task 2.6), off
+  // on a laptop.
+  TRUST_PROXY: z
+    .union([z.literal('true'), z.literal('false')])
+    .default('false')
+    .transform((v) => v === 'true'),
+
+  // --- entitlement (task 1.8) ---
+  // Signs playback tokens. Its own secret rather than reusing JWT_ACCESS_SECRET, because
+  // the two have different blast radii: a leaked playback secret mints five-minute grants
+  // for one lecture, a leaked access secret mints sessions. Rotating one must not rotate
+  // the other.
+  PLAYBACK_TOKEN_SECRET: z.string().min(32),
+  PLAYBACK_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().max(3600).default(300),
+  // Off in dev, where a laptop, a container and a proxy all present different addresses
+  // for the same user and the binding would reject every legitimate token.
+  PLAYBACK_TOKEN_BIND_IP: z
+    .union([z.literal('true'), z.literal('false')])
+    .default('false')
+    .transform((v) => v === 'true'),
+
   // Google OAuth is opt-in: only wired when both id and secret are present.
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),

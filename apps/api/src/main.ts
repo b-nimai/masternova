@@ -7,11 +7,34 @@ import { AppModule } from './app.module';
 import { appConfig } from './config/configuration';
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestFastifyApplication>(AppModule, new FastifyAdapter(), {
-    // The mail-provider webhook verifies an HMAC over the exact bytes it was sent, so the
-    // unparsed body has to survive as far as the controller.
-    rawBody: true,
-  });
+  /**
+   * `trustProxy` has to be decided before the adapter is constructed, which is before the
+   * DI container exists — so the config factory is called directly rather than injected.
+   * It is still the factory, not a bare `process.env` read: one definition of the value,
+   * and §4's rule about where the environment is read stays true.
+   *
+   * It matters beyond logging: `request.ip` is what the playback token is bound to, and
+   * behind an ALB an untrusting Fastify reports the balancer's address for every caller —
+   * which would bind every token in the fleet to one address and block nobody.
+   */
+  const { trustProxy } = appConfig();
+
+  const app = await NestFactory.create<NestFastifyApplication>(
+    AppModule,
+    new FastifyAdapter({ trustProxy }),
+    {
+      // The mail-provider webhook verifies an HMAC over the exact bytes it was sent, so
+      // the unparsed body has to survive as far as the controller.
+      rawBody: true,
+    },
+  );
+
+  /**
+   * Without this Nest registers no signal listeners, so `onApplicationShutdown` never runs
+   * outside a test — and the Redis client is torn down by process exit with its in-flight
+   * commands cut, rather than by `quit()`.
+   */
+  app.enableShutdownHooks();
 
   const { port, cookieSecret } = app.get<ConfigType<typeof appConfig>>(appConfig.KEY);
 

@@ -157,7 +157,43 @@ into one frame at the very end.
 
 A stream emits **only on change** and closes itself when the work reaches a terminal state.
 
-## 10. Still owed by task 1.11
+## 10. Authorization denials carry a machine-readable reason
+
+A 403 from the entitlement engine puts its reason code in the envelope's `details`, not in
+the sentence:
+
+```json
+{
+  "statusCode": 403,
+  "error": "FORBIDDEN",
+  "message": "You do not have access to this content",
+  "details": { "reason": "ENTITLEMENT_REVOKED", "subjectId": "cl..." }
+}
+```
+
+The codes are stable: `NO_ENTITLEMENT`, `ENTITLEMENT_REVOKED`, `COURSE_NOT_PUBLISHED`,
+`ENTITLEMENT_EXPIRED`. They exist so the client can show a buy button for one, a support
+link for another, and a "no longer available" page for a third — without parsing English.
+`details` is the same slot the publish gate already uses for its coded problems (§1); a
+denial inventing its own top-level field is silently dropped by `AllExceptionsFilter`, which
+is how this was found.
+
+**403, not 404.** The rest of the API hides other people's rows behind a 404 so an endpoint
+is not an oracle for probing ids. A course a learner is looking at is public by
+construction, and denying it with a 404 would tell an interested buyer it does not exist.
+
+## 11. Media URLs are bought with a short-lived token, not the session
+
+A `<video>` element sends no `Authorization` header, and on a cross-origin CDN no cookie
+either — so the credential for a manifest has to travel in the URL. `GET
+/playback/lectures/:id/grant` runs the entitlement chain against the session and returns a
+5-minute HMAC token; `GET /playback/manifest?token=...` is `@Public()` and takes that token
+as its only credential.
+
+The presigned object URL it returns never outlives the token that authorized it. See
+[ADR-0019](../adr/0019-playback-token-over-session-auth-for-media.md).
+
+## 12. Still owed by task 1.11
 
 Versioning strategy (`/api/v1` vs header), rate-limit headers, the generated
 `openapi.yaml`, and schemathesis contract tests.

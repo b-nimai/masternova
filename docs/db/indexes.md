@@ -588,3 +588,24 @@ planner ignored it in favour of the ordering index — 0.297 ms versus 3.000 ms 
 disjunction an index start condition. Written as the row comparison `(a, b) < (x, y)` it was
 **0.121 ms and 24 buffers**. Same pattern, same index, 8× apart, entirely down to how the
 predicate is spelled.
+
+---
+
+## Entitlement (task 1.8)
+
+No `EXPLAIN ANALYZE` numbers here, and the reason is worth stating rather than leaving as a
+gap: the table has no rows yet. Commerce (task 1.9) is what creates them, so a measurement
+taken today would be a measurement of an empty table — which is not evidence, it is a
+formality. The numbers land with 1.9's seed.
+
+What can be justified now is why each index exists at all:
+
+| Index                              | The query it serves                                                                                                                                                                  |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `@@unique(userId, courseId)`       | The decision's only lookup, and the upsert target that makes a redelivered `order.paid` idempotent. Unique because the constraint is load-bearing, not because the lookup needed it. |
+| `(userId, status, grantedAt DESC)` | The learner's library — "my courses", active first, newest first. Equality columns lead, the sort key trails, so there is no sort node left to do.                                   |
+| `(orderId)`                        | Revoking everything one order paid for. The refund path's only query, and a full scan of an entitlements table is not an option on a webhook's clock.                                |
+
+The shape of the first two follows the rule the catalog measured the hard way above: an
+equality column placed between the equality key and the sort key costs the ordering. That is
+why `status` sits before `grantedAt` and not after it.

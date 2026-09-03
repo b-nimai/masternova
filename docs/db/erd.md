@@ -235,6 +235,25 @@ whatever produced it, and a suppression is a fact about an address rather than a
   write against state Redis owns — the same argument as
   [ADR-0017](../adr/0017-provider-truth-for-upload-progress.md).
 
+### entitlement (task 1.8)
+
+- **`Entitlement@@unique([userId, courseId])` is the idempotency mechanism.** `order.paid`
+  is delivered at least once, so the grant runs twice for the same purchase as a matter of
+  routine. The constraint turns the second call into an upsert against the row the first one
+  wrote; without it there would be a second entitlement that no revoke would ever find.
+- **There is no `EXPIRED` status.** Expiry is a date comparison at decision time. A status
+  would need a job to flip it, and between the expiry instant and that job running the table
+  would disagree with the clock — in the direction that keeps serving paid content for free.
+- `REVOKED` is terminal for the row, and a re-purchase re-activates it rather than inserting
+  a second one. That is what keeps the unique pair above true for a learner who bought,
+  refunded, and bought again.
+- `orderId` is a **plain string, not a relation**: commerce (task 1.9) owns that lifecycle.
+  Same boundary rule the catalog already applies to `Lecture.assetId` — a bounded context is
+  a boundary in the schema, not only in the module graph.
+- The table deliberately records **nothing about publish state, price or preview flags**.
+  Those are per-request policies in the entitlement chain, so unpublishing a course rewrites
+  no rows. See [ADR-0018](../adr/0018-cache-the-entitlement-row-not-the-decision.md).
+
 ## Indexes
 
 Every non-primary-key index, the query it serves, and its measured `EXPLAIN ANALYZE`

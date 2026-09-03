@@ -8,6 +8,7 @@ import {
   identityConfig,
   notificationConfig,
   redisConfig,
+  entitlementConfig,
   s3Config,
 } from './config/configuration';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -22,13 +23,23 @@ import { RolesGuard } from './modules/identity/guards/roles.guard';
 import { NotificationModule } from './modules/notification/notification.module';
 import { CatalogModule } from './modules/catalog/catalog.module';
 import { MediaModule } from './modules/media/media.module';
+import { EntitlementModule } from './modules/entitlement/entitlement.module';
+import { RedisModule } from './redis/redis.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
-      load: [appConfig, s3Config, redisConfig, googleConfig, identityConfig, notificationConfig],
+      load: [
+        appConfig,
+        s3Config,
+        redisConfig,
+        googleConfig,
+        identityConfig,
+        notificationConfig,
+        entitlementConfig,
+      ],
     }),
     PrismaModule,
     HealthModule,
@@ -37,6 +48,8 @@ import { MediaModule } from './modules/media/media.module';
     NotificationModule,
     CatalogModule,
     MediaModule,
+    EntitlementModule,
+    RedisModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

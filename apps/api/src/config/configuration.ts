@@ -11,6 +11,15 @@ export const appConfig = registerAs('app', () => ({
   nodeEnv: process.env.NODE_ENV ?? 'development',
   port: Number(process.env.API_PORT ?? 3001),
   isProduction: process.env.NODE_ENV === 'production',
+  /**
+   * Believe `X-Forwarded-For`. Read at bootstrap, before the DI container exists, so it is
+   * the one value `main.ts` takes from here directly.
+   *
+   * Without it Fastify reports the *immediate peer*, which behind a load balancer is the
+   * load balancer — so `PLAYBACK_TOKEN_BIND_IP` would bind every token in the fleet to one
+   * address and block nobody, while reading in the config as though it protected something.
+   */
+  trustProxy: process.env.TRUST_PROXY === 'true',
 }));
 
 export const s3Config = registerAs('s3', () => ({
@@ -91,3 +100,20 @@ export const notificationConfig = registerAs('notification', () => ({
 }));
 
 export type NotificationConfig = ReturnType<typeof notificationConfig>;
+
+/**
+ * Entitlement config (task 1.8).
+ *
+ * **The TTL is the whole security argument.** A playback token is the only credential that
+ * travels in a URL, where it lands in browser history, in `Referer` headers and in every
+ * CDN access log. Five minutes is short enough that a leaked manifest URL is worthless
+ * before anyone can pass it on, and long enough that no legitimate player has to re-ask
+ * mid-segment. See ADR-0019.
+ */
+export const entitlementConfig = registerAs('entitlement', () => ({
+  playbackTokenSecret: process.env.PLAYBACK_TOKEN_SECRET as string,
+  playbackTokenTtlSeconds: Number(process.env.PLAYBACK_TOKEN_TTL_SECONDS ?? 300),
+  bindTokenToIp: process.env.PLAYBACK_TOKEN_BIND_IP === 'true',
+}));
+
+export type EntitlementConfig = ReturnType<typeof entitlementConfig>;
