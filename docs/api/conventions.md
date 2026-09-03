@@ -193,7 +193,31 @@ as its only credential.
 The presigned object URL it returns never outlives the token that authorized it. See
 [ADR-0019](../adr/0019-playback-token-over-session-auth-for-media.md).
 
-## 12. Still owed by task 1.11
+## 12. Payment webhooks answer 200 for almost everything
+
+`POST /webhooks/payments` is `@Public()`: the caller is the payment provider, and **the
+signature is the authentication**, checked over the raw bytes before anything is parsed.
+
+Once the signature verifies, the endpoint returns **200 whatever the outcome** — `processed`,
+`duplicate`, `ignored`, or `deferred` (an event for an order this environment has never heard
+of). All four mean "we have this, stop retrying". Providers redeliver on any non-2xx for up
+to 24 hours, so a 404 for a stray event from another environment buys a day of noise.
+
+The only non-2xx is a bad signature, and it is a **400** rather than a 401 or a 500:
+providers back off on 5xx and treat 4xx as terminal, and a signature that fails will fail on
+the tenth attempt too.
+
+```json
+{ "outcome": "duplicate" }
+```
+
+## 13. Money crosses the wire in minor units
+
+Every amount is an integer count of the currency's smallest unit — `totalMinor`,
+`discountMinor`, `unitPriceMinor`. Never a float, never a decimal string of rupees. Formatting
+is the client's job, because it is a presentation decision and the server has no locale.
+
+## 14. Still owed by task 1.11
 
 Versioning strategy (`/api/v1` vs header), rate-limit headers, the generated
 `openapi.yaml`, and schemathesis contract tests.

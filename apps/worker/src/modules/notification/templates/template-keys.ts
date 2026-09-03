@@ -10,6 +10,9 @@ export const TemplateKey = {
   PasswordReset: 'password-reset',
   PasswordChanged: 'password-changed',
   SecurityAlert: 'security-alert',
+  OrderReceipt: 'order-receipt',
+  OrderRefunded: 'order-refunded',
+  OrderExpired: 'order-expired',
 } as const;
 
 export type TemplateKey = (typeof TemplateKey)[keyof typeof TemplateKey];

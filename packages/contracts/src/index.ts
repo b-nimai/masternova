@@ -17,5 +17,7 @@ export * from './kernel/unit-of-work.js';
 export * from './events/identity.events.js';
 export * from './events/media.events.js';
 export * from './events/pipeline.events.js';
+export * from './events/commerce.events.js';
+export * from './entitlement/entitlement-granting.js';
 export * from './media/pipeline-jobs.js';
 export * from './notification/unsubscribe-token.js';

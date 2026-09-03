@@ -120,6 +120,17 @@ describe('entitlement (real Postgres + Redis + MinIO)', () => {
 
     redis = app.get<Redis>(REDIS_CLIENT);
     entitlements = app.get(EntitlementService);
+
+    // The client is deliberately `lazyConnect` with `enableOfflineQueue: false`, so a
+    // command issued before the socket is up fails rather than queueing — which is the
+    // right production behaviour (everything degrades to Postgres) and a race in a test
+    // that expects to talk to Redis on the first `beforeEach`.
+    if (redis.status !== 'ready') {
+      await new Promise<void>((resolve, reject) => {
+        redis.once('ready', resolve);
+        redis.once('error', reject);
+      });
+    }
     uow = app.get<UnitOfWork>(UNIT_OF_WORK);
   }, 300_000);
 

@@ -52,6 +52,9 @@ model User {
   courses                 Course[]
   assets                  Asset[]
   entitlements            Entitlement[]
+  cart                    Cart?
+  orders                  Order[]
+  couponRedemptions       CouponRedemption[]
 
   @@index([role])
 }
@@ -480,6 +483,8 @@ model Course {
   sections     Section[]
   edits        CourseEdit[]
   entitlements Entitlement[]
+  cartItems    CartItem[]
+  orderItems   OrderItem[]
 
   // Every index below is justified by a measured before/after on 10,000 seeded courses in
   // `docs/db/indexes.md`. They land in their own migration, after the tables, so the
@@ -900,4 +905,336 @@ model Entitlement {
   @@index([userId, status, grantedAt(sort: Desc)])
   /// Revoking everything an order produced, and the refund path's only query.
   @@index([orderId])
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// commerce (task 1.9)
+// ─────────────────────────────────────────────────────────────────────────────
+
+/// One cart per learner, created on first add.
+///
+/// **Why a table and not a cookie or Redis.** A cart is abandoned and returned to days
+/// later, from a different device, and "the thing I nearly bought" is the single most
+/// valuable signal this product has. A cart that lives in a browser is one nobody can
+/// email a reminder about.
+model Cart {
+  id String @id @default(cuid())
+
+  /// One per user, enforced. `findOrCreate` races otherwise: two tabs adding at once both
+  /// see no cart and both insert, and the loser's item silently disappears.
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items CartItem[]
+}
+
+/// A course in a cart.
+///
+/// **No price column.** A cart is a list of intentions, not a quote: pricing is computed
+/// fresh on every read by `PricingService`, so a course that was discounted after it went
+/// into the cart shows the new price. Storing the price here would mean either honouring a
+/// stale one or explaining to the learner why the number changed at checkout.
+model CartItem {
+  id String @id @default(cuid())
+
+  cartId String
+  cart   Cart   @relation(fields: [cartId], references: [id], onDelete: Cascade)
+
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  addedAt DateTime @default(now())
+
+  /// A course is in a cart once. Quantity is meaningless — you cannot buy a course twice.
+  @@unique([cartId, courseId])
+  @@index([courseId])
+}
+
+/// How a coupon reduces the price.
+enum CouponKind {
+  /// `value` is basis points out of 10,000, not a percent. 12.5% has no integer percent,
+  /// and a float in a money calculation is how rounding errors become chargebacks.
+  PERCENT
+  /// `value` is an absolute amount in minor units, in the coupon's own currency.
+  FIXED
+}
+
+/// A discount code.
+///
+/// **Redemption limits are enforced by a unique constraint, not by this counter.** The
+/// counter exists so a listing can show "83 of 100 used" without an aggregate; the actual
+/// limit is `CouponRedemption`, because a counter read-then-incremented is a check-then-act
+/// and a coupon capped at 100 will be redeemed 140 times on the day it is posted publicly.
+model Coupon {
+  id   String @id @default(cuid())
+  /// Compared case-insensitively at redemption; stored as the instructor typed it, so the
+  /// marketing email and the dashboard agree on how it looks.
+  code String @unique
+
+  kind  CouponKind
+  value Int
+
+  /// Only meaningful for FIXED. A ₹500-off coupon cannot be applied to a $ order, and
+  /// silently converting currencies at checkout is not a thing this platform will do.
+  currency Currency?
+
+  /// Empty means every course. Non-empty restricts it, which is what an instructor running
+  /// a launch promotion on one course needs.
+  courseIds String[] @default([])
+
+  /// Null means unlimited. Enforced by counting `CouponRedemption`, see above.
+  maxRedemptions Int?
+  /// How many times ONE learner may use it. Defaults to one, which is what "a coupon" means.
+  perUserLimit   Int  @default(1)
+
+  startsAt DateTime?
+  endsAt   DateTime?
+
+  /// A kill switch that does not lose the history. Deleting a coupon would orphan the
+  /// redemptions that prove why an order was cheaper than its list price.
+  active Boolean @default(true)
+
+  /// Denormalised, for display only. Never read by the redemption check.
+  redemptionCount Int @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  redemptions CouponRedemption[]
+  orders      Order[]
+
+  @@index([active, endsAt])
+}
+
+/// One use of one coupon on one order.
+///
+/// **This table is the limit.** `@@unique([couponId, orderId])` makes applying a coupon
+/// twice to an order impossible, and the per-user and global caps are counted from here
+/// inside the order's transaction — so two concurrent checkouts cannot both see 99 of 100.
+model CouponRedemption {
+  id String @id @default(cuid())
+
+  couponId String
+  coupon   Coupon @relation(fields: [couponId], references: [id], onDelete: Cascade)
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  /// What it actually took off, in minor units. The coupon's rule can change afterwards;
+  /// this is what the learner was charged against, and an invoice must reproduce it.
+  discountMinor Int
+
+  redeemedAt DateTime @default(now())
+
+  @@unique([couponId, orderId])
+  /// The per-user cap, counted directly.
+  @@index([couponId, userId])
+}
+
+/// The order lifecycle. **Forward-only** — see `order-state-machine.ts` for the edge list.
+///
+/// `PAID` and the three failure states are terminal apart from `PAID → REFUNDED`. There is
+/// deliberately no path back from `PAID` to `AWAITING_PAYMENT`: a captured payment is a
+/// fact, and "un-paying" an order is a refund, which is a different event with different
+/// accounting.
+enum OrderStatus {
+  /// Created, priced, not yet handed to the provider. The state a cart becomes.
+  CREATED
+  /// A provider order exists and the learner is on the payment page.
+  AWAITING_PAYMENT
+  /// Money captured. The only state that grants entitlements.
+  PAID
+  /// The provider declined it. Terminal — the learner starts a new order.
+  FAILED
+  /// The learner backed out.
+  CANCELLED
+  /// Nobody paid within the window, so the reservation is released.
+  EXPIRED
+  /// Fully refunded, and every entitlement it granted has been revoked.
+  REFUNDED
+}
+
+/// A purchase.
+///
+/// **Prices are snapshotted into `OrderItem`, never joined from `Course`.** An instructor
+/// raising their price must not change what an existing order says it charged — that number
+/// is on an invoice, in a payment provider's records, and potentially in a tax filing.
+model Order {
+  id String @id @default(cuid())
+
+  userId String
+  user   User   @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  status OrderStatus @default(CREATED)
+
+  /// One currency per order, taken from the items. A mixed-currency cart is refused at
+  /// checkout rather than converted — there is no exchange rate this platform is willing
+  /// to be wrong about.
+  currency Currency @default(INR)
+
+  /// All in MINOR units, all `Int`, never a float or a decimal of rupees. Razorpay's API
+  /// takes integer paise, so this is the representation that needs no conversion at the one
+  /// boundary where a rounding error becomes a chargeback.
+  subtotalMinor Int
+  discountMinor Int @default(0)
+  totalMinor    Int
+
+  couponId String?
+  coupon   Coupon? @relation(fields: [couponId], references: [id], onDelete: SetNull)
+
+  /// The provider's own order handle, e.g. Razorpay's `order_xxx`. Unique so that a
+  /// webhook arriving before the redirect can find the order it belongs to.
+  providerOrderId String? @unique
+
+  /// When an unpaid order stops holding its coupon redemption.
+  expiresAt DateTime?
+
+  paidAt      DateTime?
+  cancelledAt DateTime?
+  refundedAt  DateTime?
+
+  /// Why it failed or was refunded. Free text for support, never parsed.
+  statusReason String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  items       OrderItem[]
+  payments    Payment[]
+  refunds     Refund[]
+  redemptions CouponRedemption[]
+
+  /// "My orders", newest first.
+  @@index([userId, createdAt(sort: Desc)])
+  /// The expiry sweeper: unpaid orders past their window.
+  @@index([status, expiresAt])
+}
+
+/// One course in an order, at the price it was actually sold for.
+model OrderItem {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Restrict)
+
+  /// Snapshots. The course can be renamed or repriced; an invoice reprints from these.
+  titleSnapshot  String
+  unitPriceMinor Int
+  /// This item's share of an order-level discount, so the line items sum to the total.
+  discountMinor  Int    @default(0)
+
+  /// A course appears once in an order, for the same reason it appears once in a cart.
+  @@unique([orderId, courseId])
+  @@index([courseId])
+}
+
+enum PaymentStatus {
+  /// Created at the provider, not yet captured.
+  PENDING
+  CAPTURED
+  FAILED
+}
+
+/// One capture attempt against an order.
+///
+/// Separate from `Order` because a learner may fail twice and succeed on the third try, and
+/// the two failures are what a support conversation is about. Folding it into the order
+/// would keep only the last attempt.
+model Payment {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  provider String
+  /// The provider's payment id. **Unique, and this is what makes capture idempotent** —
+  /// the same `payment.captured` webhook delivered twice upserts one row.
+  providerPaymentId String @unique
+
+  status      PaymentStatus @default(PENDING)
+  amountMinor Int
+  currency    Currency
+  method      String?
+
+  capturedAt DateTime?
+  failedAt   DateTime?
+  /// The provider's own failure code, kept verbatim for support.
+  failureCode String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  refunds Refund[]
+
+  @@index([orderId])
+}
+
+enum RefundStatus {
+  PENDING
+  PROCESSED
+  FAILED
+}
+
+/// Money returned. Revoking the entitlement is a separate effect, driven by the event.
+model Refund {
+  id String @id @default(cuid())
+
+  orderId String
+  order   Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  paymentId String
+  payment   Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  /// Unique for the same reason `providerPaymentId` is: refund webhooks retry too.
+  providerRefundId String @unique
+
+  status      RefundStatus @default(PENDING)
+  amountMinor Int
+  reason      String?
+
+  processedAt DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([orderId])
+}
+
+/// Every webhook the provider has ever delivered, keyed by ITS event id.
+///
+/// **This table is the dedupe.** Payment providers guarantee at-least-once delivery and
+/// retry aggressively on any non-2xx — so the same `payment.captured` arrives two, five,
+/// fifty times, and without a unique constraint on the provider's own event id each one
+/// grants an entitlement and sends a receipt. Insert first, process second: the insert is
+/// the claim, and the loser of a race does nothing.
+///
+/// It also records events for orders that do not exist yet, which is the
+/// **webhook-before-redirect** case: the provider can call back before the learner's
+/// browser returns from the payment page.
+model ProviderWebhookEvent {
+  id String @id @default(cuid())
+
+  provider String
+  /// The provider's event id. Unique **per provider**, not globally.
+  providerEventId String
+  type            String
+
+  payload Json
+
+  receivedAt  DateTime  @default(now())
+  processedAt DateTime?
+  /// Set when processing failed, so a replay tool can find them.
+  lastError   String?
+
+  @@unique([provider, providerEventId])
+  @@index([processedAt, receivedAt])
 }

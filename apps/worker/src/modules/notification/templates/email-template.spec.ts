@@ -3,6 +3,9 @@ import { PasswordResetTemplate } from './password-reset.template';
 import { SecurityAlertTemplate } from './security-alert.template';
 import { WelcomeTemplate } from './welcome.template';
 import { PasswordChangedTemplate } from './password-changed.template';
+import { OrderReceiptTemplate } from './order-receipt.template';
+import { OrderRefundedTemplate } from './order-refunded.template';
+import { OrderExpiredTemplate } from './order-expired.template';
 import { TemplateRegistry } from './template.registry';
 import type { RenderContext } from './email-template';
 
@@ -106,6 +109,109 @@ describe('email templates', () => {
     expect(new SecurityAlertTemplate().category).toBe('ACCOUNT_SECURITY');
     // Onboarding, not a transaction the user asked for — so it is opt-out-able.
     expect(new WelcomeTemplate().category).toBe('PRODUCT_NEWS');
+  });
+});
+
+describe('commerce emails', () => {
+  const lines = [
+    {
+      courseId: 'c1',
+      title: 'System Design in Practice',
+      unitPriceMinor: 249900,
+      discountMinor: 50000,
+    },
+    {
+      courseId: 'c2',
+      title: 'Postgres for Backend Engineers',
+      unitPriceMinor: 149900,
+      discountMinor: 0,
+    },
+  ];
+
+  const paid = {
+    orderId: 'ord_1',
+    userId: 'u1',
+    currency: 'INR',
+    subtotalMinor: 399800,
+    discountMinor: 50000,
+    totalMinor: 349800,
+    couponCode: 'LAUNCH50',
+    items: lines,
+    paidAt: '2026-09-04T10:00:00.000Z',
+  };
+
+  const expired = {
+    orderId: 'ord_1',
+    userId: 'u1',
+    courseIds: ['c1', 'c2'],
+    currency: 'INR',
+    totalMinor: 349800,
+    items: lines,
+  };
+
+  it('prints every line and the total on the receipt, from the snapshot rather than the course', async () => {
+    const email = await new OrderReceiptTemplate().render(paid, ctx);
+
+    for (const line of lines) expect(email.text).toContain(line.title);
+    expect(email.text).toContain('3498.00');
+    // Support's first question. If it is not in the body, the learner forwards a screenshot.
+    expect(email.text).toContain('ord_1');
+  });
+
+  it('names the refunded amount and says access has ended', async () => {
+    const email = await new OrderRefundedTemplate().render(
+      {
+        orderId: 'ord_1',
+        userId: 'u1',
+        currency: 'INR',
+        amountMinor: 349800,
+        courseIds: ['c1', 'c2'],
+        refundedAt: '2026-09-04T11:00:00.000Z',
+      },
+      ctx,
+    );
+
+    expect(email.text).toContain('3498.00');
+    expect(email.text.toLowerCase()).toContain('has ended');
+  });
+
+  /** The distinction the module exists to enforce: a record of a payment is mandatory,
+   *  a nudge about one that never happened is marketing. */
+  it('makes the recovery email opt-out-able while the receipt and refund are not', () => {
+    expect(new OrderReceiptTemplate().category).toBe('ACCOUNT_SECURITY');
+    expect(new OrderRefundedTemplate().category).toBe('ACCOUNT_SECURITY');
+    expect(new OrderExpiredTemplate().category).toBe('PRODUCT_NEWS');
+  });
+
+  it('carries an unsubscribe footer on the recovery email and none on the receipt', async () => {
+    const recovery = await new OrderExpiredTemplate().render(expired, optionalCtx);
+    const receipt = await new OrderReceiptTemplate().render(paid, ctx);
+
+    expect(recovery.html).toContain('Unsubscribe');
+    expect(receipt.html).not.toContain('Unsubscribe');
+  });
+
+  it('links the recovery back to the order, not to a cart that was already emptied', async () => {
+    const email = await new OrderExpiredTemplate().render(expired, optionalCtx);
+    expect(email.text).toContain('https://masternova.test/checkout/resume?order=ord_1');
+  });
+
+  it('stays grammatical whether one course was abandoned or several', async () => {
+    const many = await new OrderExpiredTemplate().render(expired, optionalCtx);
+    const one = await new OrderExpiredTemplate().render(
+      { ...expired, items: [lines[0]], courseIds: ['c1'] },
+      optionalCtx,
+    );
+
+    expect(many.subject).toBe('Your checkout is still waiting');
+    expect(one.subject).toBe('Still interested in System Design in Practice?');
+    // The preview line is the half of an email people actually read in a list.
+    expect(many.text).not.toContain('courses is');
+  });
+
+  it('says the released coupon is not being held, rather than implying a price it cannot honour', async () => {
+    const email = await new OrderExpiredTemplate().render(expired, optionalCtx);
+    expect(email.text.toLowerCase()).toContain('no longer reserved');
   });
 });
 

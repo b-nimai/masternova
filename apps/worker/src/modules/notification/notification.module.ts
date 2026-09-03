@@ -12,6 +12,14 @@ import { WelcomeTemplate } from './templates/welcome.template';
 import { PasswordResetTemplate } from './templates/password-reset.template';
 import { PasswordChangedTemplate } from './templates/password-changed.template';
 import { SecurityAlertTemplate } from './templates/security-alert.template';
+import { OrderReceiptTemplate } from './templates/order-receipt.template';
+import { OrderRefundedTemplate } from './templates/order-refunded.template';
+import { OrderExpiredTemplate } from './templates/order-expired.template';
+import {
+  SendOrderReceiptHandler,
+  SendRefundConfirmationHandler,
+  SendCheckoutRecoveryHandler,
+} from './handlers/commerce-notification.handlers';
 import { EMAIL_DELIVERY_REPOSITORY } from './repositories/email-delivery.repository.interface';
 import { PrismaEmailDeliveryRepository } from './repositories/email-delivery.repository';
 import { AUDIENCE_REPOSITORY } from './repositories/audience.repository.interface';
@@ -25,6 +33,9 @@ const TEMPLATES = [
   PasswordResetTemplate,
   PasswordChangedTemplate,
   SecurityAlertTemplate,
+  OrderReceiptTemplate,
+  OrderRefundedTemplate,
+  OrderExpiredTemplate,
 ];
 
 /**
@@ -43,6 +54,9 @@ const TEMPLATES = [
     NotificationService,
     ...TEMPLATES,
     ...IDENTITY_NOTIFICATION_HANDLERS,
+    SendOrderReceiptHandler,
+    SendRefundConfirmationHandler,
+    SendCheckoutRecoveryHandler,
 
     {
       provide: TemplateRegistry,

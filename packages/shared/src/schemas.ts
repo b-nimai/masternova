@@ -654,3 +654,53 @@ export const deadLetteredJobSchema = z.object({
   failedAt: z.string().nullable(),
 });
 export type DeadLetteredJob = z.infer<typeof deadLetteredJobSchema>;
+
+// ─── commerce (task 1.9) ─────────────────────────────────────────────────────
+
+export const addToCartSchema = z.object({
+  courseId: z.string().min(1),
+});
+export type AddToCartInput = z.infer<typeof addToCartSchema>;
+
+export const checkoutSchema = z.object({
+  /**
+   * Optional, and trimmed rather than lower-cased: the lookup is case-insensitive, and
+   * echoing the code back the way the learner typed it is what makes an error message
+   * recognisable to them.
+   */
+  couponCode: z.string().trim().min(1).max(64).optional(),
+});
+export type CheckoutInput = z.infer<typeof checkoutSchema>;
+
+export const refundOrderSchema = z.object({
+  reason: z.string().trim().min(1).max(500).optional(),
+});
+export type RefundOrderInput = z.infer<typeof refundOrderSchema>;
+
+export const orderLineSchema = z.object({
+  courseId: z.string(),
+  title: z.string(),
+  unitPriceMinor: z.number().int(),
+  discountMinor: z.number().int(),
+});
+
+export const orderSchema = z.object({
+  id: z.string(),
+  status: z.enum([
+    'CREATED',
+    'AWAITING_PAYMENT',
+    'PAID',
+    'FAILED',
+    'CANCELLED',
+    'EXPIRED',
+    'REFUNDED',
+  ]),
+  currency: z.string(),
+  subtotalMinor: z.number().int(),
+  discountMinor: z.number().int(),
+  totalMinor: z.number().int(),
+  items: z.array(orderLineSchema),
+  createdAt: z.string(),
+  paidAt: z.string().nullable(),
+});
+export type OrderView = z.infer<typeof orderSchema>;

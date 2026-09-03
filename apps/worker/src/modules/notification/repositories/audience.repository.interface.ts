@@ -20,4 +20,15 @@ export interface IAudienceRepository {
 
   /** Absent row means subscribed, so a new user needs no rows written at signup. */
   hasOptedOut(userId: string, category: NotificationCategory): Promise<boolean>;
+
+  /**
+   * The address for a user id.
+   *
+   * It lives here rather than in the event payloads because the alternative is every
+   * producing context carrying an email in its events — commerce would have to read
+   * `User.email` to raise `order.paid`, which is notification's concern leaking into a
+   * module that has no business knowing how learners are contacted. Identity's events do
+   * carry the address, and correctly so: for those the address *is* the subject.
+   */
+  emailFor(userId: string): Promise<string | null>;
 }

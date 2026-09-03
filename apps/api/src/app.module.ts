@@ -9,6 +9,7 @@ import {
   notificationConfig,
   redisConfig,
   entitlementConfig,
+  commerceConfig,
   s3Config,
 } from './config/configuration';
 import { AllExceptionsFilter } from './common/filters/all-exceptions.filter';
@@ -25,6 +26,7 @@ import { CatalogModule } from './modules/catalog/catalog.module';
 import { MediaModule } from './modules/media/media.module';
 import { EntitlementModule } from './modules/entitlement/entitlement.module';
 import { RedisModule } from './redis/redis.module';
+import { CommerceModule } from './modules/commerce/commerce.module';
 
 @Module({
   imports: [
@@ -39,6 +41,7 @@ import { RedisModule } from './redis/redis.module';
         identityConfig,
         notificationConfig,
         entitlementConfig,
+        commerceConfig,
       ],
     }),
     PrismaModule,
@@ -50,6 +53,7 @@ import { RedisModule } from './redis/redis.module';
     MediaModule,
     EntitlementModule,
     RedisModule,
+    CommerceModule,
   ],
   providers: [
     { provide: APP_FILTER, useClass: AllExceptionsFilter },

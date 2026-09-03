@@ -22,4 +22,12 @@ export class PrismaAudienceRepository implements IAudienceRepository {
     });
     return row?.enabled === false;
   }
+
+  async emailFor(userId: string): Promise<string | null> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { email: true },
+    });
+    return user?.email ?? null;
+  }
 }

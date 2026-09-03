@@ -1,6 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
 import type { EntitlementSource } from '@masternova/db';
-import type { TransactionContext, UnitOfWork } from '@masternova/contracts';
+import type { EntitlementGranting, TransactionContext, UnitOfWork } from '@masternova/contracts';
 import {
   CourseNotFoundException,
   EntitlementDeniedException,
@@ -35,7 +35,7 @@ export interface AccessActor {
  * exception. If a rule ever appears in this file, it is in the wrong place.
  */
 @Injectable()
-export class EntitlementService {
+export class EntitlementService implements EntitlementGranting {
   constructor(
     @Inject(ACCESS_SUBJECT_READER) private readonly subjects: IAccessSubjectReader,
     @Inject(ENTITLEMENT_REPOSITORY) private readonly entitlements: IEntitlementRepository,
@@ -108,6 +108,17 @@ export class EntitlementService {
     executor?: unknown,
   ): Promise<void> {
     await this.entitlements.revoke(userId, courseId, reason, executor);
+  }
+
+  /**
+   * Drop the cached rows for these pairs.
+   *
+   * Published because the *transaction's owner* is the only one who knows when it
+   * committed, and invalidating before the commit lets a concurrent read re-cache the
+   * pre-write row for the whole TTL. Commerce calls it after its order transaction.
+   */
+  async forget(keys: readonly EntitlementKey[]): Promise<void> {
+    await this.entitlements.forget(keys);
   }
 
   /** Refund and chargeback: revoke everything one order paid for. */

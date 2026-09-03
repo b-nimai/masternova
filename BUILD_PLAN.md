@@ -3,7 +3,7 @@
 > The file you open at the start of every session to decide what to do next.
 > Plan: [`PROJECT_PLAN.md`](./PROJECT_PLAN.md) · Pitch: [`PITCH.md`](./PITCH.md) · Rules: [`CLAUDE.md`](./CLAUDE.md)
 
-**Created:** 2026-08-22 · **Last updated:** 2026-08-23 · **Status:** Phase 1A in progress — 1.1–1.5 done (kernel · identity · notification · catalog · catalog-authoring); next up 1.6 (media)
+**Created:** 2026-08-22 · **Last updated:** 2026-09-04 · **Status:** Phase 1A in progress — 1.1–1.9 done (kernel · identity · notification · catalog · catalog-authoring · media · worker pipeline · entitlement · commerce); next up 1.10 (enrollment & progress)
 
 ---
 
@@ -110,13 +110,13 @@ class is the correct design, and YAGNI beats speculative generality.
 | Phase                                                       | Tasks  | Done   | Est       | Spent  | Status |
 | ----------------------------------------------------------- | ------ | ------ | --------- | ------ | ------ |
 | [0 — Foundation](#5-phase-0--foundation)                    | 12     | 12     | 18 h      | ~9 h   | ✅     |
-| [1A — Backend: core spine](#6-phase-1a--backend-core-spine) | 11     | 8      | 180 h     | ~96 h  | 🔨     |
+| [1A — Backend: core spine](#6-phase-1a--backend-core-spine) | 11     | 9      | 180 h     | ~122 h | 🔨     |
 | [2 — DevOps & hosting](#8-phase-2--devops--hosting)         | 11     | 0      | 59 h      | —      | ☐      |
 | [3 — Frontend](#9-phase-3--frontend)                        | 16     | 0      | 84 h      | —      | ☐      |
 | [4 — Integration](#10-phase-4--integration)                 | 5      | 0      | 18 h      | —      | ☐      |
 | [1B — Backend: depth](#7-phase-1b--backend-depth)           | 6      | 0      | 96 h      | —      | ☐      |
 | [5 — Refinement & proof](#11-phase-5--refinement--proof)    | 8      | 0      | 42 h      | —      | ☐      |
-| **Total**                                                   | **69** | **20** | **497 h** | ~105 h |        |
+| **Total**                                                   | **69** | **22** | **497 h** | ~157 h |        |
 
 ### ✅ Environment verified (2026-08-22)
 
@@ -348,7 +348,7 @@ pnpm -r typecheck && pnpm -r lint && pnpm -r test    # all green
 | 1.6  | **media**                 | Upload sessions · **resumable** presigned multipart (kill the network, resume from part N) · asset model · `StorageProvider` port — MinIO ≡ S3, **no implementation may throw `NotSupportedError`** (`CLAUDE.md` §1 L).                                                                                                                                                                                 | **Adapter** · **State** (upload session lifecycle)                                                                                                                                                   | 12 h | ✅     | 09-02 | `lld/media` · ADR-0017                         |
 | 1.7  | **worker pipeline**       | Job DAG: `probe → transcode(240/480/720/1080 fanout) → package HLS → sprite+poster`. ffmpeg ABR ladder. **Idempotent workers** (deterministic output keys, upsert-on-conflict), exponential backoff, **DLQ + replay endpoint**, SSE progress to the wizard, reconciliation sweeper for orphaned S3 objects.                                                                                             | **Factory Method** (handler resolution by job type) · **Template Method** (`BaseJobProcessor`) · **Strategy** (transcode profiles) · **Builder** (ffmpeg HLS command)                                | 24 h | ✅     | 09-02 | `lld/video-pipeline` · ADR-0003                |
 | 1.8  | **entitlement** ⭐        | _The crown jewel._ Policy chain, each returning `ALLOW / DENY / ABSTAIN`, **explicit DENY wins**. Decision cached in Redis `ent:{userId}:{courseId}`, invalidated by order / refund / publish events. Enforced at **three layers**: API guard → 5-min signed playback token (bound to user + lecture + IP) → CloudFront signed cookie on the HLS path. _A leaked manifest URL is dead in five minutes._ | **Chain of Responsibility** (ordered rules, any may decide or pass) · **Strategy** (policies) · **Specification** · **Decorator** (cache wrapper over the repository)                                | 18 h | ✅     | 09-03 | `lld/entitlement-engine` · ADR-0018 · ADR-0019 |
-| 1.9  | **commerce**              | Cart · `PricingService` **separate from** `OrderService` (`CLAUDE.md` §1 S) · coupons · order state machine · `Idempotency-Key` header + stored request-hash/response · Razorpay adapter · **webhook dedupe on provider event id**, out-of-order arrival, webhook-before-redirect · outbox → enroll + invoice + email · refunds revoking entitlement.                                                   | **State** (forward-only transitions) · **Adapter** (Razorpay → `PaymentProvider`) · **Facade** (`CheckoutService` over cart+pricing+payment+order) · **Observer**                                    | 26 h | ☐      |       | `lld/order-state-machine` · `api/conventions`  |
+| 1.9  | **commerce**              | Cart · `PricingService` **separate from** `OrderService` (`CLAUDE.md` §1 S) · coupons · order state machine · `Idempotency-Key` header + stored request-hash/response · Razorpay adapter · **webhook dedupe on provider event id**, out-of-order arrival, webhook-before-redirect · outbox → enroll + invoice + email · refunds revoking entitlement.                                                   | **State** (forward-only transitions) · **Adapter** (Razorpay → `PaymentProvider`) · **Facade** (`CheckoutService` over cart+pricing+payment+order) · **Observer**                                    | 26 h | ✅     | 09-04 | `lld/order-state-machine` · `api/conventions`  |
 | 1.10 | **enrollment & progress** | Entitlement records. Heartbeats → **Redis write-back buffer**, flushed every 30 s / on pause / on `beforeunload` via `sendBeacon`. Monotonic `maxPositionSeconds`. Rollups for "% complete". **The documented tradeoff:** up to 30 s of progress lost on a Redis failure — acceptable for a progress bar, _not_ for the payment path, which is why that one is fully transactional.                     | **Decorator** (write-back cache)                                                                                                                                                                     | 12 h | ☐      |       | `lld/progress` · ADR-0011                      |
 | 1.11 | **API hardening**         | Generated OpenAPI · rate limiting · cursor pagination · error envelope · versioning · helmet + CORS · schemathesis contract tests.                                                                                                                                                                                                                                                                      | —                                                                                                                                                                                                    | 10 h | ☐      |       | `api/openapi.yaml` · `api/conventions.md`      |
 
@@ -365,7 +365,7 @@ Owned by task 1.3, emitted by 1.2 / 1.5 / 1.7 / 1.9 / 1.10 / 1.14. Every one is 
 | Password changed               | Security notice — "this wasn't you?"                                             | identity           |
 | New device / suspicious login  | Security alert (ties into refresh-reuse detection)                               | identity           |
 | Order paid                     | **Receipt + invoice**                                                            | commerce           |
-| Payment failed / order expired | Recovery email with a resume-checkout link                                       | commerce           |
+| Payment failed / order expired | Recovery email with a resume-checkout link (optional category — it is marketing) | commerce           |
 | Refund processed               | Refund confirmation + access-revoked notice                                      | commerce           |
 | Enrolled                       | Course access + where to start                                                   | enrollment         |
 | Course published               | Instructor confirmation                                                          | catalog-authoring  |
@@ -387,13 +387,15 @@ testable with no external account and no cost.
 
 ### 6.1.1 Known debt, raised by review and deliberately deferred
 
-Recorded rather than silently carried. Neither is in 1.5's scope, and both belong to the
-module that owns the file.
+Recorded rather than silently carried. Each belongs to the module that owns the file, not to
+the task that happened to notice it.
 
-| Finding                                                                                                                                                                                                                                                   | Owner     |
-| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
-| The mail-provider webhook verifies the HMAC but has **no timestamp tolerance and no replay store**, so a captured signed `email.bounced` body stays valid forever and can be replayed to re-suppress an address. Needs a ±5-minute window.                | 1.3 / 2.5 |
-| A **suppressed** `EmailDelivery` row stores the template _key_ in its `subject` column, because the suppression check runs before the render. The column exists to answer "why didn't this arrive?", so it should hold a subject or an explicit sentinel. | 1.3       |
+| Finding                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       | Owner     |
+| --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------- |
+| The mail-provider webhook verifies the HMAC but has **no timestamp tolerance and no replay store**, so a captured signed `email.bounced` body stays valid forever and can be replayed to re-suppress an address. Needs a ±5-minute window.                                                                                                                                                                                                                                                                                                                                                    | 1.3 / 2.5 |
+| A **suppressed** `EmailDelivery` row stores the template _key_ in its `subject` column, because the suppression check runs before the render. The column exists to answer "why didn't this arrive?", so it should hold a subject or an explicit sentinel.                                                                                                                                                                                                                                                                                                                                     | 1.3       |
+| **A partial refund is applied as a full one.** `onRefunded` ignores the event's `amountMinor`: any `refund.processed` sets the order `REFUNDED` and revokes every item on it. A ₹100 goodwill refund issued from the Razorpay dashboard against a ₹2,000 three-course order therefore revokes all three, and the confirmation email quotes the order total rather than the amount actually returned. Needs a partial-refund state (`PARTIALLY_REFUNDED`) and per-item revocation before refunds are exposed to admins in the UI.                                                              | 1.9 / 3   |
+| **Nothing blocks a second order for a course already being paid for.** `ownedCourseIds` matches only `PAID` orders, so a learner can check out, re-add the same course, check out again under a different `Idempotency-Key`, and pay both — one course, two charges, invisible afterwards because the entitlement upserts on `(userId, courseId)`. Excluding courses on the user's live `CREATED`/`AWAITING_PAYMENT` orders is the fix, but it also blocks a legitimate re-checkout for up to `orderExpiryMinutes` after abandoning, so it is a deliberate UX call rather than a quiet patch. | 1.9       |
 
 ### 6.2 Tests that must exist by the end of 1A
 
@@ -402,7 +404,7 @@ These are the interview artifacts, not box-ticking.
 - [x] **SIGKILL a worker mid-transcode** → job re-runs, zero duplicate renditions, no orphaned S3 objects (1.7 — `apps/worker/test/pipeline.int-spec.ts`, "safe to run twice": identical object set, one rendition row, against real ffmpeg)
 - [x] **Ten concurrent upload completions → one 200, nine 409, one asset, one event** (1.6 — `apps/api/test/media.int-spec.ts`)
 - [x] **Kill the client mid-upload → resume reports the gap from the provider and finishes** (1.6 — same file, against real MinIO)
-- [ ] **Fire one webhook 50× concurrently** → exactly one enrollment, one invoice, one email
+- [x] **Fire one webhook 50× concurrently** → exactly one enrollment, one invoice, one email (1.9 — `apps/api/test/commerce.int-spec.ts`: one entitlement, one `commerce.order.paid`, one payment row, exactly one `processed`. The invoice itself is deferred to 1.12 — see §2.2)
 - [x] **Relay the same outbox row twice → still exactly one email** (1.3 — `apps/worker/test/notification.int-spec.ts`)
 - [ ] Replay an `Idempotency-Key` → stored response returned, **no second charge**
 - [ ] A non-enrolled user blocked at the API guard **and** at the CDN path
@@ -531,7 +533,7 @@ and therefore wrong.
 | `media.md`                 | 1.6   | ✅         | ✅       | ✅         | ✅     |
 | `video-pipeline.md`        | 1.7   | ✅         | ✅       | ✅         | ✅     |
 | `entitlement-engine.md` ⭐ | 1.8   | ✅         | ✅       | ✅         | ✅     |
-| `order-state-machine.md`   | 1.9   | ☐          | ☐        | ☐          | ☐      |
+| `order-state-machine.md`   | 1.9   | ✅         | ✅       | ✅         | ✅     |
 | `progress.md`              | 1.10  | ☐          | ☐        | ☐          | ☐      |
 | `ledger.md`                | 1.12  | ☐          | ☐        | ☐          | ☐      |
 | `search.md`                | 1.13  | ☐          | ☐        | ☐          | ☐      |
@@ -589,7 +591,7 @@ Then add the row to `0. Index.md`: `# | Topic | Trigger phrase | 30-sec revision
 
 | Pattern                         | Priority | Masternova code that becomes its worked example                     | Status                                                                                               |
 | ------------------------------- | -------- | ------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------- |
-| **Strategy**                    | P0       | entitlement policies · payment providers · transcode profiles       | ☐                                                                                                    |
+| **Strategy**                    | P0       | entitlement policies · payment providers · transcode profiles       | ☐ — still the last P0                                                                                |
 | **Observer**                    | P0       | domain events → outbox → enroll / invoice / email / index           | ✅ — `6. Behavioural Design Patterns/2. Observer Pattern.md`                                         |
 | **State**                       | P0       | order state machine · course draft lifecycle · upload session       | ✅ 08-23 — `6. Behavioural Design Patterns/3. State Pattern.md`, worked from the course lifecycle    |
 | **Command**                     | P1       | wizard step edits (undoable) · queue job payloads · ledger postings | ✅ 08-23 — `6. Behavioural Design Patterns/4. Command Pattern.md`, worked from the wizard undo stack |
@@ -598,11 +600,13 @@ Then add the row to `0. Index.md`: `# | Topic | Trigger phrase | 30-sec revision
 | **Specification**               | —        | course search/filter predicates, composable with `and` / `or`       | ☐                                                                                                    |
 | **Repository (+ Unit of Work)** | —        | all persistence; outbox rows in the same txn as the state change    | ☐                                                                                                    |
 
-Existing notes to **update** with Masternova examples: Adapter (Razorpay → `PaymentProvider`,
-S3/MinIO → `StorageProvider`) · Decorator (caching wrapper over a repository) · Builder
-(course assembly, ffmpeg HLS command) · Factory (job handler resolution) · Abstract Factory
-(notification channel families) · Prototype ("duplicate this course") · Facade
-(`CheckoutService`, `PlaybackService`).
+Existing notes to **update** with Masternova examples. Done: **Adapter** ✅ 09-04 — both
+`IStorageProvider` (MinIO ≡ S3) and `RazorpayAdapter` (event-catalogue mapping, raw-byte
+signature verification, derived stable event id) · **Decorator** ✅ (entitlement cache) ·
+**Builder** ✅ (ffmpeg HLS command) · **Factory** ✅ (job-handler registry) · **Facade**
+✅ 09-04 (`CheckoutService` — the sequence, the transaction boundary, and the god-object line).
+Still owed: Abstract Factory (notification channel families) · Prototype ("duplicate this
+course") · Facade's second example (`PlaybackService`, arrives with 1.10).
 
 **Singleton:** you get it from Nest's DI container. **Never hand-roll one.** Being able to
 say _"Singleton is a DI-container concern, not something I implement"_ is itself a good

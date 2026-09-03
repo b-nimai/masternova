@@ -102,6 +102,12 @@ class FakeAudience implements IAudienceRepository {
   hasOptedOut(userId: string, category: NotificationCategory) {
     return Promise.resolve(this.optOuts.has(`${userId}:${category}`));
   }
+
+  emails = new Map<string, string>();
+
+  emailFor(userId: string) {
+    return Promise.resolve(this.emails.get(userId) ?? null);
+  }
 }
 
 class FakeMail implements MailProvider {

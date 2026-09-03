@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { ENTITLEMENT_GRANTING } from '@masternova/contracts';
 import { StorageModule } from '@masternova/storage';
 import type Redis from 'ioredis';
 import { ConfigType } from '@nestjs/config';
@@ -88,9 +89,17 @@ const POLICY_CHAIN = [
     PlaybackTokenService,
     PlaybackService,
     EntitlementGuard,
+
+    /**
+     * The grant/revoke half, published under a `contracts` token so commerce (task 1.9) can
+     * reach it without importing this module's internals — the boundary rule in §4, which
+     * the `boundaries` lint rule enforces. `useExisting`, so it is the same instance and
+     * the cache is not duplicated.
+     */
+    { provide: ENTITLEMENT_GRANTING, useExisting: EntitlementService },
   ],
   // The guard and the service, for the modules that gate their own routes (catalog's
   // lecture detail, enrollment's progress writes in task 1.10).
-  exports: [EntitlementService, EntitlementGuard],
+  exports: [EntitlementService, EntitlementGuard, ENTITLEMENT_GRANTING],
 })
 export class EntitlementModule {}

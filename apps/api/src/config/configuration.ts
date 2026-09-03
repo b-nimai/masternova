@@ -117,3 +117,25 @@ export const entitlementConfig = registerAs('entitlement', () => ({
 }));
 
 export type EntitlementConfig = ReturnType<typeof entitlementConfig>;
+
+/**
+ * Commerce config (task 1.9).
+ *
+ * Every provider credential is optional, and that is a deliberate asymmetry: a paid
+ * checkout without them fails loudly at the call, while a **free** course still checks out,
+ * because that path never reaches a provider. It means the whole local stack — cart,
+ * coupons, the order state machine, entitlement granting — is exercisable with no Razorpay
+ * account, which is the difference between a checkout flow that gets tested and one that
+ * does not.
+ */
+export const commerceConfig = registerAs('commerce', () => ({
+  razorpayKeyId: process.env.RAZORPAY_KEY_ID ?? '',
+  razorpayKeySecret: process.env.RAZORPAY_KEY_SECRET ?? '',
+  /** Absent means the webhook endpoint refuses everything rather than trusting the caller. */
+  razorpayWebhookSecret: process.env.RAZORPAY_WEBHOOK_SECRET,
+  providerTimeoutMs: Number(process.env.PAYMENT_PROVIDER_TIMEOUT_MS ?? 10_000),
+  orderExpiryMinutes: Number(process.env.ORDER_EXPIRY_MINUTES ?? 30),
+  configured: Boolean(process.env.RAZORPAY_KEY_ID && process.env.RAZORPAY_KEY_SECRET),
+}));
+
+export type CommerceConfig = ReturnType<typeof commerceConfig>;

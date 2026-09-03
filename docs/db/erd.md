@@ -254,6 +254,34 @@ whatever produced it, and a suppression is a fact about an address rather than a
   Those are per-request policies in the entitlement chain, so unpublishing a course rewrites
   no rows. See [ADR-0018](../adr/0018-cache-the-entitlement-row-not-the-decision.md).
 
+### commerce (task 1.9)
+
+- **`ProviderWebhookEvent@@unique([provider, providerEventId])` is the dedupe**, and the
+  **insert is the claim** — taken before any processing, so two concurrent redeliveries
+  cannot both proceed. Unique _per provider_, not globally: two gateways may legitimately
+  issue the same id. See [ADR-0021](../adr/0021-webhook-dedupe-on-provider-event-id.md).
+- **`Payment.providerPaymentId` and `Refund.providerRefundId` are unique**, which is what
+  makes recording a capture or a refund an upsert rather than a duplicate row.
+- **`CouponRedemption` is the redemption limit, not `Coupon.redemptionCount`.** The counter
+  is denormalised for display; enforcing the cap against it would be a read-then-increment,
+  and a coupon capped at 100 is redeemed 140 times the day it is posted publicly. The count
+  and the insert that makes it true run in one transaction.
+- **Prices are snapshotted into `OrderItem`** (`titleSnapshot`, `unitPriceMinor`,
+  `discountMinor`) and never joined from `Course`. An instructor repricing must not change
+  what an existing order says it charged — that number is on an invoice and possibly in a
+  tax filing. `discountMinor` per line exists so the lines sum **exactly** to the order
+  total; allocating proportionally and rounding each line independently loses paise.
+- **`CartItem` has no price column.** A cart is a list of intentions, not a quote: pricing is
+  computed on every read, so a course discounted after it went in shows the new price.
+- **All money is `Int` minor units** — paise, cents. Never a float, never a decimal of
+  rupees. Razorpay's API takes integer paise, so this is the representation that needs no
+  conversion at the one boundary where a rounding error becomes a chargeback.
+- `Order.providerOrderId` is unique because it is the **webhook's only lookup**, and it is
+  written before the learner reaches the payment page — which is what makes a callback that
+  beats the browser back work at all.
+- `Order.userId` is `onDelete: Restrict`: an order is a financial record and must not vanish
+  with the account. `OrderItem.courseId` likewise.
+
 ## Indexes
 
 Every non-primary-key index, the query it serves, and its measured `EXPLAIN ANALYZE`

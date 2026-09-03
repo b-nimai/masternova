@@ -57,6 +57,19 @@ const envSchema = z.object({
     .default('false')
     .transform((v) => v === 'true'),
 
+  // --- commerce (task 1.9) ---
+  // Optional: the local stack has no Razorpay account, and checkout for a free course
+  // works without one. A paid checkout with these unset fails loudly at the call rather
+  // than silently pretending to charge.
+  RAZORPAY_KEY_ID: z.string().optional(),
+  RAZORPAY_KEY_SECRET: z.string().optional(),
+  // Absent means the webhook endpoint refuses every request. Unverified is not the same as
+  // unconfigured, and this endpoint is reachable by anyone on the internet.
+  RAZORPAY_WEBHOOK_SECRET: z.string().optional(),
+  PAYMENT_PROVIDER_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  // How long an unpaid order holds its coupon redemption before the sweeper releases it.
+  ORDER_EXPIRY_MINUTES: z.coerce.number().int().positive().default(30),
+
   // Google OAuth is opt-in: only wired when both id and secret are present.
   GOOGLE_CLIENT_ID: z.string().optional(),
   GOOGLE_CLIENT_SECRET: z.string().optional(),

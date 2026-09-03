@@ -6,17 +6,19 @@
 Write one whenever a real alternative existed. If there was no alternative, it was not a
 decision and does not need a record.
 
-| #                                                          | Decision                                              | Status   |
-| ---------------------------------------------------------- | ----------------------------------------------------- | -------- |
-| [0001](0001-modular-monolith.md)                           | Modular monolith over microservices                   | accepted |
-| [0002](0002-fresh-repo-over-fork.md)                       | Fresh repository over forking Loom Lite AI            | accepted |
-| [0003](0003-hls-over-progressive-mp4.md)                   | HLS with an ABR ladder over progressive MP4           | accepted |
-| [0004](0004-outbox-over-direct-publish.md)                 | Transactional outbox over publishing directly         | accepted |
-| [0010](0010-refresh-rotation-over-stateless-jwt.md)        | Refresh rotation + reuse detection over stateless JWT | accepted |
-| [0015](0015-keyset-over-offset-pagination.md)              | Keyset cursors over LIMIT/OFFSET pagination           | accepted |
-| [0016](0016-optimistic-concurrency-for-authoring.md)       | Optimistic concurrency for authoring writes           | accepted |
-| [0017](0017-provider-truth-for-upload-progress.md)         | Storage provider is the truth for upload progress     | accepted |
-| [0018](0018-cache-the-entitlement-row-not-the-decision.md) | Cache the entitlement row, not the decision           | accepted |
-| [0019](0019-playback-token-over-session-auth-for-media.md) | A short-lived signed playback token for media URLs    | accepted |
+| #                                                          | Decision                                                       | Status   |
+| ---------------------------------------------------------- | -------------------------------------------------------------- | -------- |
+| [0001](0001-modular-monolith.md)                           | Modular monolith over microservices                            | accepted |
+| [0002](0002-fresh-repo-over-fork.md)                       | Fresh repository over forking Loom Lite AI                     | accepted |
+| [0003](0003-hls-over-progressive-mp4.md)                   | HLS with an ABR ladder over progressive MP4                    | accepted |
+| [0004](0004-outbox-over-direct-publish.md)                 | Transactional outbox over publishing directly                  | accepted |
+| [0010](0010-refresh-rotation-over-stateless-jwt.md)        | Refresh rotation + reuse detection over stateless JWT          | accepted |
+| [0015](0015-keyset-over-offset-pagination.md)              | Keyset cursors over LIMIT/OFFSET pagination                    | accepted |
+| [0016](0016-optimistic-concurrency-for-authoring.md)       | Optimistic concurrency for authoring writes                    | accepted |
+| [0017](0017-provider-truth-for-upload-progress.md)         | Storage provider is the truth for upload progress              | accepted |
+| [0018](0018-cache-the-entitlement-row-not-the-decision.md) | Cache the entitlement row, not the decision                    | accepted |
+| [0019](0019-playback-token-over-session-auth-for-media.md) | A short-lived signed playback token for media URLs             | accepted |
+| [0020](0020-entitlement-grant-in-the-order-transaction.md) | Grant entitlements in the order's transaction                  | accepted |
+| [0021](0021-webhook-dedupe-on-provider-event-id.md)        | Dedupe webhooks on the provider event id, claim-before-process | accepted |
 
 Planned: see `BUILD_PLAN.md` §12 for the full backlog (0003–0012).

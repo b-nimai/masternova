@@ -609,3 +609,29 @@ What can be justified now is why each index exists at all:
 The shape of the first two follows the rule the catalog measured the hard way above: an
 equality column placed between the equality key and the sort key costs the ordering. That is
 why `status` sits before `grantedAt` and not after it.
+
+---
+
+## Commerce (task 1.9)
+
+Same situation as the entitlement table above, and stated rather than left as a gap: these
+tables have no production rows yet, so an `EXPLAIN ANALYZE` today would measure an empty
+table. That is a formality, not evidence. The numbers land with the Phase 5 load work.
+
+What can be justified now is why each index exists:
+
+| Index                                            | The query it serves                                                                                                         |
+| ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| `Order.providerOrderId` (unique)                 | The **webhook's only lookup**. Every callback resolves its order through this, on a path the provider retries aggressively. |
+| `Order (userId, createdAt DESC)`                 | "My orders". Equality column first, sort key trailing, so there is no sort node left.                                       |
+| `Order (status, expiresAt)`                      | The expiry sweeper. Without it, releasing abandoned coupon redemptions is a full scan on a timer.                           |
+| `OrderItem (courseId)`                           | "Who bought this course", and the already-owned check at checkout.                                                          |
+| `Payment (orderId)`                              | Every capture attempt for an order — what a support conversation is actually about.                                         |
+| `CouponRedemption (couponId, userId)`            | The per-user cap, counted inside the checkout transaction.                                                                  |
+| `ProviderWebhookEvent (processedAt, receivedAt)` | Finding events that failed processing, for a replay tool.                                                                   |
+
+The unique constraints on this page are **not** performance indexes and should not be read as
+such: `ProviderWebhookEvent(provider, providerEventId)`, `Payment.providerPaymentId`,
+`Refund.providerRefundId` and `CouponRedemption(couponId, orderId)` exist to make concurrent
+work correct. They are load-bearing for idempotency, and dropping one to "save write cost"
+would silently allow a double grant.

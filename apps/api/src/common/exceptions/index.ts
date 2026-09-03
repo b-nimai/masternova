@@ -4,3 +4,4 @@ export * from './notification.exception';
 export * from './catalog.exception';
 export * from './media.exception';
 export * from './entitlement.exception';
+export * from './commerce.exception';
