@@ -1,6 +1,6 @@
 import type { StartedPostgreSqlContainer } from '@testcontainers/postgresql';
 import type { PrismaClient } from '@masternova/db';
-import { PrismaUnitOfWork } from '@masternova/db';
+import { PrismaUnitOfWork } from '@masternova/db/unit-of-work';
 import type { PrismaService } from '../src/prisma/prisma.service';
 import { startDatabase } from './setup-db';
 

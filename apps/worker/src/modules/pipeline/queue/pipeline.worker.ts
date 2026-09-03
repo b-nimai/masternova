@@ -11,7 +11,13 @@ import type { PipelineJobType } from '@masternova/contracts';
 import { redisConfig } from '../../../config/configuration';
 import { JobProcessorRegistry } from '../jobs/job-processor.registry';
 import { UnrecoverableJobError, type JobContext } from '../jobs/base-job.processor';
-import { PIPELINE_CONCURRENCY, PIPELINE_LOCK_MS, PIPELINE_QUEUE } from './queue.config';
+import { PipelineFailureService } from './pipeline-failure.service';
+import {
+  PIPELINE_CONCURRENCY,
+  PIPELINE_JOB_OPTIONS,
+  PIPELINE_LOCK_MS,
+  PIPELINE_QUEUE,
+} from './queue.config';
 
 /**
  * Drains the pipeline queue and hands each job to the processor that claims its type.
@@ -29,6 +35,7 @@ export class PipelineWorker implements OnApplicationBootstrap, OnModuleDestroy {
   constructor(
     @Inject(redisConfig.KEY) private readonly config: ConfigType<typeof redisConfig>,
     private readonly registry: JobProcessorRegistry,
+    private readonly failures: PipelineFailureService,
   ) {}
 
   onApplicationBootstrap(): void {
@@ -44,6 +51,13 @@ export class PipelineWorker implements OnApplicationBootstrap, OnModuleDestroy {
       this.logger.error(
         `job ${job?.id ?? '?'} (${job?.name ?? '?'}) failed on attempt ${job?.attemptsMade ?? 0}: ${error.message}`,
       );
+    });
+
+    // Not the same event as 'failed'. BullMQ forwards its ioredis connection errors here,
+    // and an EventEmitter 'error' with no listener *throws* — so a Redis restart would take
+    // the worker process down instead of letting ioredis reconnect, which it will.
+    this.worker.on('error', (error) => {
+      this.logger.error(`pipeline worker connection error: ${error.message}`);
     });
 
     this.logger.log(
@@ -76,10 +90,22 @@ export class PipelineWorker implements OnApplicationBootstrap, OnModuleDestroy {
     try {
       await processor.process(job.data, ctx);
     } catch (error) {
+      const unrecoverable = error instanceof UnrecoverableJobError;
+
+      // The last attempt, or one that can never succeed. Either way nothing will run this
+      // job again, so this is the only moment the asset can be moved out of RUNNING — after
+      // the rethrow the job belongs to the dead-letter set and no code of ours sees it.
+      if (
+        unrecoverable ||
+        ctx.attempt >= (job.opts.attempts ?? PIPELINE_JOB_OPTIONS.attempts ?? 1)
+      ) {
+        await this.failures.markFailed(job.name as PipelineJobType, job.data, error as Error);
+      }
+
       // Translate our "this can never succeed" into BullMQ's, so it skips the remaining
       // attempts and dead-letters immediately. Without this a malformed payload burns five
       // attempts and two and a half minutes of backoff to reach the same place.
-      if (error instanceof UnrecoverableJobError) {
+      if (unrecoverable) {
         throw new UnrecoverableError(error.message);
       }
       throw error;

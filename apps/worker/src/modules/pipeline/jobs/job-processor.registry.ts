@@ -1,4 +1,4 @@
-import { Injectable, Logger, Optional, type OnApplicationBootstrap } from '@nestjs/common';
+import { Injectable, Logger, Optional, type OnModuleInit } from '@nestjs/common';
 import { DiscoveryService, Reflector } from '@nestjs/core';
 import type { PipelineJobType } from '@masternova/contracts';
 import { JOB_PROCESSOR_METADATA } from '../../../common/decorators/job-processor.decorator';
@@ -22,11 +22,18 @@ import type { BaseJobProcessor } from './base-job.processor';
  * scaling signal split five ways. One queue with a type discriminator keeps queue depth a
  * single number — the number the autoscaler in task 2.6 actually scales on.
  *
- * Registration happens at `onApplicationBootstrap` rather than in the constructor because
- * that is the first point at which every provider has an instance.
+ * Registration happens at **`onModuleInit`**, not `onApplicationBootstrap`. Nest runs every
+ * module's `onModuleInit` before any `onApplicationBootstrap`, and `PipelineWorker` starts
+ * draining in the latter — so this ordering is what guarantees the worker never sees an
+ * empty registry. The first version used `onApplicationBootstrap` for both and the worker
+ * logged "draining for: " with no types, which is a cosmetic symptom of a real race: had
+ * a job arrived in that window it would have been rejected as an unknown type.
+ *
+ * Providers are already instantiated by `onModuleInit`, which is what `DiscoveryService`
+ * needs — the constructor is the only point that is genuinely too early.
  */
 @Injectable()
-export class JobProcessorRegistry implements OnApplicationBootstrap {
+export class JobProcessorRegistry implements OnModuleInit {
   private readonly logger = new Logger(JobProcessorRegistry.name);
   private readonly byType = new Map<string, BaseJobProcessor<unknown>>();
 
@@ -35,7 +42,7 @@ export class JobProcessorRegistry implements OnApplicationBootstrap {
     @Optional() private readonly reflector?: Reflector,
   ) {}
 
-  onApplicationBootstrap(): void {
+  onModuleInit(): void {
     if (!this.discovery || !this.reflector) return;
 
     const found = this.discovery

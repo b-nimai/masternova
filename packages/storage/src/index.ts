@@ -9,8 +9,8 @@
  * What belongs here: the port, its adapter, and the config shape they need. What does not:
  * anything that knows what a *lecture* is. This package moves bytes.
  */
-export * from './storage.interface';
-export * from './storage.config';
-export * from './storage.exception';
-export * from './storage.service';
-export * from './storage.module';
+export * from './storage.interface.js';
+export * from './storage.config.js';
+export * from './storage.exception.js';
+export * from './storage.service.js';
+export * from './storage.module.js';

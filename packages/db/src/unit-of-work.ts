@@ -27,7 +27,20 @@ import type { PrismaClient } from '@prisma/client';
  * of both apps' DI wiring; each app binds it to `UNIT_OF_WORK` with its own client.
  */
 export class PrismaUnitOfWork implements UnitOfWork {
-  constructor(private readonly prisma: PrismaClient) {}
+  /**
+   * An explicit field, not a TypeScript **parameter property**.
+   *
+   * This package ships `.ts` sources that Node 24 loads by *type stripping*, which erases
+   * annotations without transforming anything — and a parameter property is a
+   * transformation, so it fails at load with `ERR_UNSUPPORTED_TYPESCRIPT_SYNTAX`. It
+   * typechecks and unit-tests perfectly either way; only the running container notices.
+   * The same rule applies to enums and namespaces anywhere under `packages/`.
+   */
+  private readonly prisma: PrismaClient;
+
+  constructor(prisma: PrismaClient) {
+    this.prisma = prisma;
+  }
 
   async execute<T>(work: (ctx: TransactionContext) => Promise<T>): Promise<T> {
     return this.prisma.$transaction(async (tx) => {

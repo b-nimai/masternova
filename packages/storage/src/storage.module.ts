@@ -1,7 +1,7 @@
 import { Module, type DynamicModule, type Provider } from '@nestjs/common';
-import { StorageService } from './storage.service';
-import { STORAGE_PROVIDER } from './storage.interface';
-import { STORAGE_CONFIG, type StorageConfig } from './storage.config';
+import { StorageService } from './storage.service.js';
+import { STORAGE_PROVIDER } from './storage.interface.js';
+import { STORAGE_CONFIG, type StorageConfig } from './storage.config.js';
 
 export interface StorageModuleAsyncOptions {
   imports?: DynamicModule['imports'];

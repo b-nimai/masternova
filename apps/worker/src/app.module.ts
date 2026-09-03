@@ -7,6 +7,7 @@ import {
   notificationConfig,
   redisConfig,
   s3Config,
+  mediaToolsConfig,
 } from './config/configuration';
 import { PrismaModule } from './prisma/prisma.module';
 import { OutboxRelayModule } from './modules/outbox-relay/outbox-relay.module';
@@ -27,7 +28,14 @@ import { PipelineModule } from './modules/pipeline/pipeline.module';
     ConfigModule.forRoot({
       isGlobal: true,
       validate: validateEnv,
-      load: [redisConfig, databaseConfig, mailConfig, notificationConfig, s3Config],
+      load: [
+        redisConfig,
+        databaseConfig,
+        mailConfig,
+        notificationConfig,
+        s3Config,
+        mediaToolsConfig,
+      ],
     }),
     PrismaModule,
     OutboxRelayModule,

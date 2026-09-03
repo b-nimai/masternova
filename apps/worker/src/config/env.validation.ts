@@ -49,6 +49,11 @@ const envSchema = z.object({
   S3_REGION: z.string().default('us-east-1'),
   S3_ACCESS_KEY: z.string().min(1),
   S3_SECRET_KEY: z.string().min(1),
+
+  /// Overridable so tests can use the static binaries rather than requiring an apt
+  /// install; the worker image puts the real ones on PATH.
+  FFMPEG_PATH: z.string().default('ffmpeg'),
+  FFPROBE_PATH: z.string().default('ffprobe'),
 });
 
 export type Env = z.infer<typeof envSchema>;

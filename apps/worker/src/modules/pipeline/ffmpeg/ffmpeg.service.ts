@@ -1,5 +1,7 @@
 import { spawn } from 'node:child_process';
-import { Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import type { ConfigType } from '@nestjs/config';
+import { mediaToolsConfig } from '../../../config/configuration';
 import type { IMediaTools, ProbeResult, ProgressCallback } from './ffmpeg.interface';
 
 /**
@@ -24,8 +26,12 @@ const STDERR_TAIL_BYTES = 4_000;
 export class MediaToolsService implements IMediaTools {
   private readonly logger = new Logger(MediaToolsService.name);
 
+  constructor(
+    @Inject(mediaToolsConfig.KEY) private readonly config: ConfigType<typeof mediaToolsConfig>,
+  ) {}
+
   async probe(inputUrl: string): Promise<ProbeResult> {
-    const raw = await this.capture('ffprobe', [
+    const raw = await this.capture(this.config.ffprobePath, [
       '-v',
       'error',
       '-print_format',
@@ -83,9 +89,21 @@ export class MediaToolsService implements IMediaTools {
     const withProgress =
       onProgress && totalSeconds ? ['-progress', 'pipe:1', '-nostats', ...args] : [...args];
 
-    await this.capture('ffmpeg', withProgress, (chunk) => {
+    // Stdout arrives in chunks, not in lines, and a chunk boundary falls wherever the pipe
+    // buffer happened to fill. `out_time_us=123456789` split as `out_time_us=12` /
+    // `3456789` matches the pattern on its first half and reports 12 microseconds — the
+    // per-job progress in BullMQ would jump back to ~0 in the middle of an encode. The tail
+    // of each chunk is therefore carried into the next one and only parsed once terminated.
+    let pending = '';
+
+    await this.capture(this.config.ffmpegPath, withProgress, (chunk) => {
       if (!onProgress || !totalSeconds) return;
-      for (const line of chunk.split('\n')) {
+
+      pending += chunk;
+      const lines = pending.split('\n');
+      pending = lines.pop() ?? '';
+
+      for (const line of lines) {
         // `out_time_us` is the output timestamp reached, in microseconds.
         const match = /^out_time_us=(\d+)$/.exec(line.trim());
         if (!match) continue;
@@ -101,7 +119,7 @@ export class MediaToolsService implements IMediaTools {
    * a clear message rather than an ENOENT that reads like a filesystem bug.
    */
   private capture(
-    tool: 'ffmpeg' | 'ffprobe',
+    tool: string,
     args: readonly string[],
     onStdout?: (chunk: string) => void,
   ): Promise<string> {
@@ -129,10 +147,16 @@ export class MediaToolsService implements IMediaTools {
         );
       });
 
-      child.on('close', (code) => {
+      child.on('close', (code, signal) => {
         if (code === 0) return resolve(stdout);
-        this.logger.error(`${tool} exited ${code}: ${stderr.trim()}`);
-        reject(new Error(`${tool} exited with code ${code}: ${stderr.trim().split('\n').pop()}`));
+
+        // A null exit code means the process was *killed*, and the signal is the only
+        // evidence of why. SIGKILL here is almost always the OOM killer on a worker sized
+        // too small for the resolution it was handed — a completely different problem from
+        // a malformed input, and indistinguishable without this.
+        const how = signal ? `killed by ${signal}` : `exited with code ${code}`;
+        this.logger.error(`${tool} ${how}: ${stderr.trim()}`);
+        reject(new Error(`${tool} ${how}: ${stderr.trim().split('\n').pop() ?? 'no output'}`));
       });
     });
   }

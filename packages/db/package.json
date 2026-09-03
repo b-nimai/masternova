@@ -5,7 +5,8 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "exports": {
-    ".": "./src/index.ts"
+    ".": "./src/index.ts",
+    "./unit-of-work": "./src/unit-of-work.ts"
   },
   "scripts": {
     "generate": "prisma generate",
@@ -25,5 +26,12 @@
     "tsx": "^4.23.12",
     "typescript": "^5.7.3",
     "@types/node": "^22.10.7"
+  },
+  "typesVersions": {
+    "*": {
+      "unit-of-work": [
+        "./src/unit-of-work.ts"
+      ]
+    }
   }
 }

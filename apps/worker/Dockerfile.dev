@@ -1,7 +1,13 @@
 # Dev image for the BullMQ worker. Build context is the repo ROOT.
 FROM node:24-slim
 
-RUN apt-get update && apt-get install -y --no-install-recommends openssl python3 make g++ \
+# ffmpeg is the transcode pipeline's one external dependency (task 1.7). Installed from
+# apt rather than vendored as a static build on purpose: the static builds cannot link
+# glibc's NSS, so they segfault the moment they have to resolve a hostname — and every
+# source this reads is a presigned URL against `minio`. The integration tests use a static
+# binary and work around that with an IP literal; production must not have to.
+RUN apt-get update && apt-get install -y --no-install-recommends \
+  openssl python3 make g++ ffmpeg \
   && rm -rf /var/lib/apt/lists/*
 
 RUN corepack enable

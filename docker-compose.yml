@@ -144,6 +144,14 @@ services:
       WEB_URL: http://localhost:3000
       API_PUBLIC_URL: http://localhost:3001
       UNSUBSCRIBE_SECRET: dev-unsubscribe-secret-change-me-32-chars
+      # media pipeline (task 1.7). The worker reads the source object and writes every
+      # rendition, so it needs the same bucket the API hands upload URLs for. Only the
+      # internal endpoint: unlike the API it signs nothing a browser will fetch.
+      S3_ENDPOINT: http://minio:9000
+      S3_BUCKET: masternova-media
+      S3_REGION: us-east-1
+      S3_ACCESS_KEY: minioadmin
+      S3_SECRET_KEY: minioadmin
     # Same two reasons as the api service. The worker does not apply migrations — the api
     # owns that, so there is exactly one writer to the migration history.
     command: sh -c "pnpm --filter @masternova/db run generate && pnpm --filter './packages/**' build && pnpm dev"
@@ -154,6 +162,9 @@ services:
         condition: service_healthy
       mailpit:
         condition: service_started
+      # The pipeline writes renditions into the bucket the init sidecar creates.
+      minio-init:
+        condition: service_completed_successfully
     volumes:
       - ./apps/worker/src:/app/apps/worker/src
       - ./packages:/app/packages

@@ -1,10 +1,12 @@
 import { Module } from '@nestjs/common';
 import { UploadsController } from './uploads.controller';
 import { AssetsController } from './assets.controller';
+import { PipelineController, PipelineDeadLetterController } from './pipeline.controller';
 import { UploadSessionService } from './upload-session.service';
 import { UploadCompletionService } from './upload-completion.service';
 import { UploadReaperService } from './upload-reaper.service';
 import { AssetService } from './asset.service';
+import { PipelineStatusService } from './pipeline-status.service';
 import { StorageModule } from '@masternova/storage';
 import { MEDIA_REPOSITORY } from './repositories/media.repository.interface';
 import { PrismaMediaRepository } from './repositories/media.repository';
@@ -33,12 +35,18 @@ import { s3Config } from '../../config/configuration';
       useFactory: (config: ConfigType<typeof s3Config>) => config,
     }),
   ],
-  controllers: [UploadsController, AssetsController],
+  controllers: [
+    UploadsController,
+    AssetsController,
+    PipelineController,
+    PipelineDeadLetterController,
+  ],
   providers: [
     UploadSessionService,
     UploadCompletionService,
     UploadReaperService,
     AssetService,
+    PipelineStatusService,
     { provide: MEDIA_REPOSITORY, useClass: PrismaMediaRepository },
   ],
   exports: [AssetService],

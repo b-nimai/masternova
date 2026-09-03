@@ -82,3 +82,18 @@ export const s3Config = registerAs('s3', () => ({
 }));
 
 export type S3Config = ReturnType<typeof s3Config>;
+
+/**
+ * Where the media tools live.
+ *
+ * Defaults to `ffmpeg`/`ffprobe` on `PATH`, which is what the worker image installs. They
+ * are overridable because the integration tests point them at the static binaries from
+ * `ffmpeg-static` — a 200 MB apt install is not a reasonable prerequisite for `pnpm test`,
+ * and a test that skips itself when ffmpeg is absent is a test that never runs.
+ */
+export const mediaToolsConfig = registerAs('mediaTools', () => ({
+  ffmpegPath: process.env.FFMPEG_PATH ?? 'ffmpeg',
+  ffprobePath: process.env.FFPROBE_PATH ?? 'ffprobe',
+}));
+
+export type MediaToolsConfig = ReturnType<typeof mediaToolsConfig>;

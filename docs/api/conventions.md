@@ -142,7 +142,22 @@ touch the API. Two consequences worth stating as conventions:
   `/resume`, deliberately: a recovery path used only after a crash is a path that first runs
   in production. See [ADR-0017](../adr/0017-provider-truth-for-upload-progress.md).
 
-## 9. Still owed by task 1.11
+## 9. Long-running work streams over SSE, not WebSocket
+
+Anything that takes minutes and that a human watches — today the transcode pipeline —
+exposes **two** endpoints: a one-shot `GET` for a client that would rather poll, and a
+`GET .../stream` that emits `text/event-stream`.
+
+SSE over a WebSocket because the data flows one way and the client only ever watches. It is
+a plain HTTP response with automatic browser reconnection, no second protocol to secure or
+proxy, and no sticky-session requirement in front of the load balancer. Two headers are not
+optional: `Cache-Control: no-cache` and `X-Accel-Buffering: no` — nginx and ALB both buffer
+by default, which holds every event until the response ends and turns a live progress bar
+into one frame at the very end.
+
+A stream emits **only on change** and closes itself when the work reaches a terminal state.
+
+## 10. Still owed by task 1.11
 
 Versioning strategy (`/api/v1` vs header), rate-limit headers, the generated
 `openapi.yaml`, and schemathesis contract tests.

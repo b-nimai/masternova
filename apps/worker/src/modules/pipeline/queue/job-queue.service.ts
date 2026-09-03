@@ -4,6 +4,7 @@ import type { ConfigType } from '@nestjs/config';
 import { PipelineJob, type PipelineJobType } from '@masternova/contracts';
 import { redisConfig } from '../../../config/configuration';
 import { PIPELINE_JOB_OPTIONS, PIPELINE_QUEUE } from './queue.config';
+import { packageJobId, posterJobId, probeJobId, spriteJobId, transcodeJobId } from './job-ids';
 
 /** One rung of the fan-out, plus the two artifacts that do not depend on the ladder. */
 export interface PipelineFanout {
@@ -38,6 +39,16 @@ export class JobQueueService implements OnModuleDestroy {
     const connection = { host: config.host, port: config.port };
     this.queue = new Queue(PIPELINE_QUEUE, { connection });
     this.flows = new FlowProducer({ connection });
+
+    // Both forward their ioredis connection errors as an EventEmitter 'error', which throws
+    // when nothing is listening. A Redis restart would then crash the process instead of
+    // letting ioredis reconnect — which it does on its own, so logging is the whole fix.
+    this.queue.on('error', (error) => {
+      this.logger.error(`pipeline queue connection error: ${error.message}`);
+    });
+    this.flows.on('error', (error) => {
+      this.logger.error(`pipeline flow producer connection error: ${error.message}`);
+    });
   }
 
   async onModuleDestroy(): Promise<void> {
@@ -56,7 +67,7 @@ export class JobQueueService implements OnModuleDestroy {
     await this.queue.add(
       PipelineJob.Probe,
       { assetId },
-      { ...PIPELINE_JOB_OPTIONS, jobId: `probe:${assetId}` },
+      { ...PIPELINE_JOB_OPTIONS, jobId: probeJobId(assetId) },
     );
     this.logger.log(`queued probe for asset ${assetId}`);
   }
@@ -75,13 +86,13 @@ export class JobQueueService implements OnModuleDestroy {
 
     const children: FlowJob[] = [
       ...rungs.map((rung) =>
-        this.child(PipelineJob.Transcode, `transcode:${assetId}:${rung}`, { assetId, rung }),
+        this.child(PipelineJob.Transcode, transcodeJobId(assetId, rung), { assetId, rung }),
       ),
-      this.child(PipelineJob.Poster, `poster:${assetId}`, {
+      this.child(PipelineJob.Poster, posterJobId(assetId), {
         assetId,
         atSeconds: fanout.posterAtSeconds,
       }),
-      this.child(PipelineJob.Sprite, `sprite:${assetId}`, {
+      this.child(PipelineJob.Sprite, spriteJobId(assetId), {
         assetId,
         durationSeconds: fanout.durationSeconds,
       }),
@@ -91,7 +102,7 @@ export class JobQueueService implements OnModuleDestroy {
       name: PipelineJob.Package,
       queueName: PIPELINE_QUEUE,
       data: { assetId, rungs },
-      opts: { ...PIPELINE_JOB_OPTIONS, jobId: `package:${assetId}` },
+      opts: { ...PIPELINE_JOB_OPTIONS, jobId: packageJobId(assetId) },
       children,
     });
 

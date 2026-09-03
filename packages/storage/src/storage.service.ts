@@ -13,9 +13,9 @@ import {
   UploadPartCommand,
 } from '@aws-sdk/client-s3';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import { STORAGE_CONFIG, type StorageConfig } from './storage.config';
-import { StorageException } from './storage.exception';
-import type { IStorageProvider, StoredPart, UploadPart } from './storage.interface';
+import { STORAGE_CONFIG, type StorageConfig } from './storage.config.js';
+import { StorageException } from './storage.exception.js';
+import type { IStorageProvider, StoredPart, UploadPart } from './storage.interface.js';
 
 /**
  * S3/MinIO wrapper for the multipart upload flow.

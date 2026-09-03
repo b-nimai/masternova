@@ -66,24 +66,34 @@ export class PackagingProcessor extends BaseJobProcessor<PackageJobPayload> {
       'application/vnd.apple.mpegurl',
     );
 
-    await this.repo.upsertRendition({
-      assetId: asset.id,
-      kind: 'MASTER',
-      name: MASTER_RENDITION,
-      storageKey: masterPlaylistKey(asset.id),
-      sizeBytes: BigInt(body.byteLength),
-    });
-
-    // The state change and the event commit together. An asset marked playable with no
-    // `media.asset.playable` in the outbox is a lecture nothing downstream ever hears about
-    // — no instructor email, no search index entry — and it is invisible until someone asks
-    // why the course never appeared.
+    // The master row, the state change and the event all commit together, which is why each
+    // write takes `ctx.executor`. An asset marked playable with no `media.asset.playable` in
+    // the outbox is a lecture nothing downstream ever hears about — no instructor email, no
+    // search index entry — and it is invisible until someone asks why the course never
+    // appeared. A repository call that omits the handle silently auto-commits on its own
+    // connection and reintroduces exactly that window.
     await this.uow.execute(async (ctx) => {
-      await this.repo.setPipeline(asset.id, 'READY', {
-        stage: stageLabel(PipelineJob.Package),
-        percent: overallPercent(PipelineJob.Package, 1),
-        error: null,
-      });
+      await this.repo.upsertRendition(
+        {
+          assetId: asset.id,
+          kind: 'MASTER',
+          name: MASTER_RENDITION,
+          storageKey: masterPlaylistKey(asset.id),
+          sizeBytes: BigInt(body.byteLength),
+        },
+        ctx.executor,
+      );
+
+      await this.repo.setPipeline(
+        asset.id,
+        'READY',
+        {
+          stage: stageLabel(PipelineJob.Package),
+          percent: overallPercent(PipelineJob.Package, 1),
+          error: null,
+        },
+        ctx.executor,
+      );
 
       ctx.publish({
         type: PipelineEvent.AssetPlayable,
@@ -123,7 +133,16 @@ export class PackagingProcessor extends BaseJobProcessor<PackageJobPayload> {
 
     for (const rung of rungs) {
       const profile = profileFor(rung);
-      if (!profile) continue;
+      // A rung that was encoded but has since left `ABR_LADDER` — a replayed package job
+      // after the ladder was trimmed in a deploy. Skipping it would omit the variant while
+      // `ctx.publish` still announced the rung, and if *every* listed rung had left the
+      // ladder the master would be two header lines and no variants: a hard player error on
+      // an asset marked playable. Retrying cannot bring the profile back, so it is fatal.
+      if (!profile) {
+        throw new UnrecoverableJobError(
+          `rung ${rung} is no longer in the ABR ladder; re-run the pipeline for ${assetId}`,
+        );
+      }
       const bandwidth = profile.videoBitrateBps + profile.audioBitrateBps;
 
       // Dimensions come from the rendition row, which recorded what was actually encoded.

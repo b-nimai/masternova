@@ -210,6 +210,31 @@ whatever produced it, and a suppression is a fact about an address rather than a
   re-signs _the same_ boundaries. Re-deriving them from a size the client re-sends would let
   a second call silently repartition a half-finished upload.
 
+### video pipeline (1.7)
+
+- **`Asset.pipeline` is a second axis from `Asset.status`.** `status = READY` means the
+  bytes arrived; `pipeline = READY` means they are playable. Collapsing them would make
+  "upload finished" and "transcode finished" the same fact, and the publish gate has to
+  tell them apart.
+- `pipelineStage` is **free text**, deliberately. It is a human-facing label for the
+  wizard's progress bar; an enum would mean a migration every time a pipeline step is
+  renamed, for a column no query filters on.
+- **`MediaRendition@@unique([assetId, name])` is the idempotency mechanism**, not
+  documentation. Output keys are a pure function of the asset id and the rendition name, so
+  a redelivered job overwrites its own objects and upserts the same row. Insert-only would
+  accumulate one duplicate rendition per redelivery, and the master playlist would then
+  list the same rung four times.
+- A rendition row is written **after** every byte of that output is in the bucket. The row
+  is the completion marker, so writing it first would let a crash mid-upload leave a rung
+  that reads as finished and that the master playlist then points at.
+- `MediaRendition` rather than columns on `Asset`: which rungs exist depends on the source
+  resolution, so a 480p upload has two and a 4K upload has four. Columns would mean
+  `has720p` booleans and a migration whenever the ladder changes.
+- **There is no `dead_letter_jobs` table.** BullMQ's failed set already holds the payload,
+  the attempt count and every attempt's stack trace. A table beside it would be a dual
+  write against state Redis owns — the same argument as
+  [ADR-0017](../adr/0017-provider-truth-for-upload-progress.md).
+
 ## Indexes
 
 Every non-primary-key index, the query it serves, and its measured `EXPLAIN ANALYZE`

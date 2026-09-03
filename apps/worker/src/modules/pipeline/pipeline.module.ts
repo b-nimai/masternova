@@ -2,11 +2,12 @@ import { Module } from '@nestjs/common';
 import { DiscoveryModule } from '@nestjs/core';
 import type { ConfigType } from '@nestjs/config';
 import { UNIT_OF_WORK } from '@masternova/contracts';
-import { PrismaUnitOfWork } from '@masternova/db';
+import { PrismaUnitOfWork } from '@masternova/db/unit-of-work';
 import { StorageModule } from '@masternova/storage';
 import { s3Config } from '../../config/configuration';
 import { PrismaService } from '../../prisma/prisma.service';
 import { JobQueueService } from './queue/job-queue.service';
+import { PipelineFailureService } from './queue/pipeline-failure.service';
 import { PipelineWorker } from './queue/pipeline.worker';
 import { JobProcessorRegistry } from './jobs/job-processor.registry';
 import { MEDIA_TOOLS } from './ffmpeg/ffmpeg.interface';
@@ -19,6 +20,7 @@ import { SpriteProcessor } from './processors/sprite.processor';
 import { AssetReadyHandler } from './handlers/asset-ready.handler';
 import { PIPELINE_REPOSITORY } from './repositories/pipeline.repository.interface';
 import { PrismaPipelineRepository } from './repositories/pipeline.repository';
+import { ReconciliationService } from './reconciliation.service';
 
 /**
  * The transcode pipeline: `probe → transcode(fan-out) → package`, with the poster and the
@@ -44,6 +46,7 @@ import { PrismaPipelineRepository } from './repositories/pipeline.repository';
   providers: [
     JobQueueService,
     PipelineWorker,
+    PipelineFailureService,
     JobProcessorRegistry,
 
     ProbeProcessor,
@@ -64,6 +67,7 @@ import { PrismaPipelineRepository } from './repositories/pipeline.repository';
       useFactory: (prisma: PrismaService) => new PrismaUnitOfWork(prisma),
       inject: [PrismaService],
     },
+    ReconciliationService,
   ],
   exports: [JobQueueService],
 })

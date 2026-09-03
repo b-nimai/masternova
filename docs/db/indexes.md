@@ -503,6 +503,17 @@ for the _rare_ values, and the planner can use it precisely because `READY` domi
 that stops being true the index stops being used, and the honest thing will be to drop it
 rather than defend it.
 
+## 7.7 Indexes added by task 1.7
+
+| Index                                      | What it is for                                                                                                                                                                                                     |
+| ------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `MediaRendition(assetId, name)` **unique** | A constraint doing real work: it is the upsert target that makes a redelivered transcode overwrite its row rather than add one. Not a performance index — it is the idempotency mechanism.                         |
+| `MediaRendition(storageKey)` **unique**    | The key is identity. Two renditions sharing one would overwrite each other's bytes.                                                                                                                                |
+| `MediaRendition(assetId, kind)`            | "Every rung for this asset" — read by packaging before it writes the master, and by the player. Bounded by the ladder (at most 7 rows per asset), so it will never be the bottleneck; the index keeps it a lookup. |
+
+No `EXPLAIN` for the same reason as §7.5 and §7.6: every read here is by primary key or
+bounded by one asset's handful of renditions. Numbers against that would prove nothing.
+
 ## 8. Reproducing this
 
 ```bash

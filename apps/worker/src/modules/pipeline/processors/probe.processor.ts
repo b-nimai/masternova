@@ -71,12 +71,7 @@ export class ProbeProcessor extends BaseJobProcessor<ProbeJobPayload> {
     await this.queue.enqueueFanout({
       assetId: asset.id,
       rungs,
-      // A frame from 10% in, not from 0. The first frame of a lecture recording is
-      // reliably a black screen or a half-drawn slide, which makes a poor course card.
-      posterAtSeconds: Math.max(
-        1,
-        Math.min(probed.durationSeconds * 0.1, probed.durationSeconds - 1),
-      ),
+      posterAtSeconds: posterOffset(probed.durationSeconds),
       durationSeconds: probed.durationSeconds,
     });
 
@@ -100,4 +95,23 @@ export class ProbeProcessor extends BaseJobProcessor<ProbeJobPayload> {
    * wrong: it is the path a DLQ replay takes after the fan-out failed to enqueue, and
    * skipping would leave the asset probed forever and never encoded.
    */
+}
+
+/**
+ * Where to grab the poster frame.
+ *
+ * A frame from 10% in, not from 0: the first frame of a lecture recording is reliably a
+ * black screen or a half-drawn slide, which makes a poor course card.
+ *
+ * The clamp has to be `min` on the *outside*. Written the other way round the 1-second floor
+ * overrides the upper bound for anything shorter than ~1.1s, so a 1-second source seeks to
+ * exactly its duration — ffmpeg's `-ss` lands past the last frame, `-frames:v 1` writes
+ * nothing, and the poster job fails on a `readFile` ENOENT that is not recognisably fatal
+ * and so burns all five attempts before dead-lettering the flow's parent with it.
+ */
+export function posterOffset(durationSeconds: number): number {
+  if (!Number.isFinite(durationSeconds) || durationSeconds <= 0) return 0;
+  // Half a frame short of the end at 30fps, so the seek is always inside the media.
+  const latest = Math.max(0, durationSeconds - 0.05);
+  return Math.min(Math.max(durationSeconds * 0.1, 1), latest);
 }

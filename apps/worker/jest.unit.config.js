@@ -13,6 +13,9 @@ module.exports = {
   moduleFileExtensions: ['ts', 'tsx', 'js', 'json', 'node'],
   collectCoverageFrom: ['**/*.ts', '!**/*.module.ts', '!main.ts'],
   moduleNameMapper: {
+    // The subpath export must be mapped before the catch-all, or it resolves to
+    // `packages/db/unit-of-work/src`, which does not exist.
+    '^@masternova/db/unit-of-work$': '<rootDir>/../../../packages/db/src/unit-of-work',
     '^@masternova/(.*)$': '<rootDir>/../../../packages/$1/src',
     // packages/* are ESM source and so carry explicit .js extensions on relative
     // imports. Jest resolves them as CommonJS, where those files are .ts — strip the

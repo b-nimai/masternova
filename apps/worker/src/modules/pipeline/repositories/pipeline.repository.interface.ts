@@ -13,6 +13,11 @@ export interface RenditionRecord {
   readonly bitrateBps?: number;
 }
 
+/**
+ * `executor` is the optional transaction handle from the Unit of Work. Passing it makes the
+ * write part of the caller's transaction; omitting it runs on the base client. The writes
+ * that must commit *with* the outbox row take it — see `PackagingProcessor`.
+ */
 export interface IPipelineRepository {
   findAsset(assetId: string): Promise<Asset | null>;
 
@@ -26,7 +31,7 @@ export interface IPipelineRepository {
    * Insert-only would accumulate a duplicate rendition per redelivery, and the master
    * playlist would then list the same rung four times.
    */
-  upsertRendition(rendition: RenditionRecord): Promise<void>;
+  upsertRendition(rendition: RenditionRecord, executor?: unknown): Promise<void>;
 
   findRendition(assetId: string, name: string): Promise<MediaRendition | null>;
   listRenditions(assetId: string): Promise<MediaRendition[]>;
@@ -35,6 +40,7 @@ export interface IPipelineRepository {
     assetId: string,
     status: PipelineStatus,
     patch: { stage?: string; percent?: number; error?: string | null },
+    executor?: unknown,
   ): Promise<void>;
 
   /**

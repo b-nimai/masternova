@@ -1,6 +1,6 @@
 import { Global, Module } from '@nestjs/common';
 import { UNIT_OF_WORK } from '@masternova/contracts';
-import { PrismaUnitOfWork } from '@masternova/db';
+import { PrismaUnitOfWork } from '@masternova/db/unit-of-work';
 import { PrismaService } from '../../prisma/prisma.service';
 
 /**

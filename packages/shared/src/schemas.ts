@@ -618,3 +618,39 @@ export const assetSchema = z.object({
   createdAt: z.string(),
 });
 export type AssetView = z.infer<typeof assetSchema>;
+
+/* -------------------------- media pipeline (1.7) -------------------------- */
+
+export const pipelineStatusSchema = z.enum(['PENDING', 'RUNNING', 'READY', 'FAILED']);
+export type PipelineStatusValue = z.infer<typeof pipelineStatusSchema>;
+
+/**
+ * What the wizard's progress bar reads, and what the SSE stream emits as each frame.
+ *
+ * One number across the whole five-job DAG rather than per-job progress: the instructor is
+ * watching one upload become playable, and reassembling five jobs into that on the client
+ * would put the DAG's shape in two places.
+ */
+export const pipelineProgressSchema = z.object({
+  assetId: z.string(),
+  status: pipelineStatusSchema,
+  /** A human-facing label — "Encoding 720p". Free text; see the schema comment. */
+  stage: z.string().nullable(),
+  percent: z.number().int().min(0).max(100),
+  error: z.string().nullable(),
+  /** Null until the probe stage has run. */
+  durationSeconds: z.number().int().nullable(),
+});
+export type PipelineProgress = z.infer<typeof pipelineProgressSchema>;
+
+/** One entry in the dead-letter queue: a job that exhausted every attempt. */
+export const deadLetteredJobSchema = z.object({
+  id: z.string(),
+  /** The pipeline job type, e.g. `media.transcode` — which step gave up. */
+  type: z.string(),
+  assetId: z.string().nullable(),
+  attempts: z.number().int().nonnegative(),
+  reason: z.string(),
+  failedAt: z.string().nullable(),
+});
+export type DeadLetteredJob = z.infer<typeof deadLetteredJobSchema>;

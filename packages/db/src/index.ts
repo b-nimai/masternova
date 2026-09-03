@@ -11,6 +11,13 @@
  * Models are added here by the module that owns them, in bounded-context blocks. This
  * package deliberately exposes only the client and its generated types: no repositories,
  * no services. Repositories live with their module, behind an interface (CLAUDE.md §1 D).
+ *
+ * The one exception is the Unit of Work, and it is reached through its **own subpath** —
+ * `@masternova/db/unit-of-work` — rather than through this barrel. That is not taste: this
+ * package ships TypeScript sources, Node 24 loads them by type-stripping, and a
+ * type-stripped module cannot resolve a *relative* specifier to a `.ts` file. Re-exporting
+ * it here therefore crashed both apps at boot with `ERR_MODULE_NOT_FOUND` — found by
+ * running the stack, not by a typecheck, which resolved it happily.
  */
 
 export { PrismaClient, Prisma } from '@prisma/client';
@@ -51,5 +58,3 @@ export type {
   MediaRendition,
   RenditionKind,
 } from '@prisma/client';
-
-export { PrismaUnitOfWork } from './unit-of-work';

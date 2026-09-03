@@ -1,14 +1,14 @@
 {
   "extends": "../../tsconfig.base.json",
   "compilerOptions": {
-    // Matches the apps that compile these sources: this package ships TypeScript, not a
-    // build, so its files are emitted by whichever app imports them — and both are Nest
-    // apps needing decorator metadata under CommonJS.
-    "module": "CommonJS",
-    "moduleResolution": "Node",
-    "emitDecoratorMetadata": true,
+    // Decorators must survive into the emitted JS: `StorageService` is a Nest provider.
+    // `emitDecoratorMetadata` is deliberately absent — its one dependency is bound with an
+    // explicit `@Inject(STORAGE_CONFIG)` token rather than by parameter type, so nothing
+    // here needs design-time type metadata.
     "experimentalDecorators": true,
     "strictPropertyInitialization": false,
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "outDir": "dist",
     "rootDir": "src"
   },

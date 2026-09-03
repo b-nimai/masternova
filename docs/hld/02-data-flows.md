@@ -242,7 +242,49 @@ holds the facts. See [ADR-0017](../adr/0017-provider-truth-for-upload-progress.m
 and the outbox row commit in one transaction, and the pipeline that reacts is a consumer the
 producer has never heard of.
 
-## 6. The shape all of these share
+## 6. Upload → playable
+
+The longest flow in the system, and the only one where a **human waits with a progress bar**.
+
+```mermaid
+sequenceDiagram
+  participant A as API
+  participant O as Outbox relay
+  participant Q as BullMQ
+  participant W as Worker fleet
+  participant S as Object storage
+  participant B as Browser (wizard)
+
+  A->>A: upload completes (flow 5) - outbox media.asset.ready
+  O->>Q: add probe, jobId = media_probe_<assetId>
+  Q->>W: probe - ffprobe over a presigned URL
+  W->>Q: flow(parent=package, children=[rungs..., poster, sprite])
+
+  par one job per rung, across the fleet
+    Q->>W: transcode(rung)
+    W->>S: segments, then the variant playlist
+  end
+
+  Q->>W: package (runs only once every child finished)
+  W->>S: master.m3u8
+  W->>W: pipeline=READY + outbox media.asset.playable (one transaction)
+
+  loop while RUNNING
+    B->>A: GET /media/assets/:id/pipeline/stream (SSE)
+    A-->>B: {stage, percent}
+  end
+```
+
+**What is different about this flow.** Everywhere else in this document the work finishes
+inside a request. Here it takes minutes, on a machine the requester never touches, and the
+only thing connecting them is a ratcheted integer in Postgres that the SSE stream polls. The
+progress bar is a _projection_ of the DAG, not a channel into it — which is why the worker
+collapses five jobs into one percentage rather than the client reassembling them.
+
+**What is the same.** The last step: the state change and the outbox row commit together,
+and the pipeline announces its result to consumers it has never heard of.
+
+## 7. The shape all of these share
 
 1. **State and its consequences commit together**, or neither does.
 2. **The request returns as soon as the state is durable.** Consequences are owed, not awaited.

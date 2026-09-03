@@ -1,11 +1,16 @@
 import { Injectable } from '@nestjs/common';
-import type { Asset, MediaRendition, PipelineStatus } from '@masternova/db';
+import type { Asset, MediaRendition, PipelineStatus, PrismaClient } from '@masternova/db';
 import { PrismaService } from '../../../prisma/prisma.service';
 import type { IPipelineRepository, RenditionRecord } from './pipeline.repository.interface';
 
 @Injectable()
 export class PrismaPipelineRepository implements IPipelineRepository {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** The transaction handle when the caller is inside a Unit of Work, else the base client. */
+  private client(executor?: unknown): PrismaClient {
+    return (executor as PrismaClient) ?? this.prisma;
+  }
 
   findAsset(assetId: string): Promise<Asset | null> {
     return this.prisma.asset.findUnique({ where: { id: assetId } });
@@ -20,7 +25,7 @@ export class PrismaPipelineRepository implements IPipelineRepository {
     });
   }
 
-  async upsertRendition(rendition: RenditionRecord): Promise<void> {
+  async upsertRendition(rendition: RenditionRecord, executor?: unknown): Promise<void> {
     const data = {
       kind: rendition.kind,
       storageKey: rendition.storageKey,
@@ -30,7 +35,7 @@ export class PrismaPipelineRepository implements IPipelineRepository {
       bitrateBps: rendition.bitrateBps ?? null,
     };
 
-    await this.prisma.mediaRendition.upsert({
+    await this.client(executor).mediaRendition.upsert({
       where: { assetId_name: { assetId: rendition.assetId, name: rendition.name } },
       create: { assetId: rendition.assetId, name: rendition.name, ...data },
       update: data,
@@ -49,8 +54,9 @@ export class PrismaPipelineRepository implements IPipelineRepository {
     assetId: string,
     status: PipelineStatus,
     patch: { stage?: string; percent?: number; error?: string | null },
+    executor?: unknown,
   ): Promise<void> {
-    await this.prisma.asset.update({
+    await this.client(executor).asset.update({
       where: { id: assetId },
       data: {
         pipeline: status,
